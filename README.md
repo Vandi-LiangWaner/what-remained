@@ -2,9 +2,13 @@
 
 A private ecological notebook across time. A modern, minimalist Windows desktop app with Palatino headings and event content, with local SQLite storage and a read-only connection to Literature Box.
 
-## Preview build
+## Download for Windows
 
-Run `release/What Remained-portable/What Remained.exe` for a local preview, or run `release/What Remained-1.1.0-Setup.exe` to install. The installer creates Start menu and desktop shortcuts. It does not require administrator rights. This initial preview is unsigned.
+[Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
+
+Run the installer to create Start menu and desktop shortcuts, or extract the portable ZIP and open `What Remained.exe`. The installer does not require administrator rights. This initial release is unsigned.
+
+![What Remained: events and pinned filters on one shared timeline canvas](docs/timeline.png)
 
 Your notebook lives in **Documents/Reminiscence**, independently of the application folder. The SQLite database is `reminiscence.sqlite`; managed files live in `Attachments`. An automatic database backup is refreshed after edits in `Backups`. Use **Notebook settings → Export portable backup** to include attachments in a portable JSON backup. Import merges event IDs and updates matching records. To remove the application, right-click `Uninstall.ps1` in its installation folder and run it with PowerShell; notebook data is retained.
 
@@ -58,4 +62,4 @@ The automated Electron smoke test uses a separate notebook and example records. 
 .runtime\electron.exe . --smoke --data-dir=C:\path\isolated-test-notebook
 ```
 
-Preview images, builds, notebooks, databases, and local runtime files are excluded from version control. This repository has not been published.
+Builds, notebooks, databases, local test captures, and runtime files are excluded from version control. The screenshot above uses fictional example records; no personal library data is included in this repository or its downloads.

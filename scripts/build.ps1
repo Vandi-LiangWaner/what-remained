@@ -1,4 +1,4 @@
-param([string]$ElectronZip)
+param([string]$ElectronZip, [string]$OutputDirectory = 'release')
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $runtime = Join-Path $project '.runtime'
@@ -6,7 +6,7 @@ if (!(Test-Path (Join-Path $runtime 'electron.exe'))) {
   if (!$ElectronZip) { throw 'Pass -ElectronZip with the official Electron 36.9.5 Windows x64 archive.' }
   Expand-Archive -LiteralPath $ElectronZip -DestinationPath $runtime -Force
 }
-$release = Join-Path $project 'release'
+$release = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $project $OutputDirectory }
 $portable = Join-Path $release 'What Remained-portable'
 New-Item -ItemType Directory -Force -Path $portable | Out-Null
 Get-ChildItem -LiteralPath $runtime | Where-Object Name -ne 'resources' | Copy-Item -Destination $portable -Recurse -Force
@@ -15,6 +15,7 @@ $application = Join-Path $portable 'resources\app'
 New-Item -ItemType Directory -Force -Path $application | Out-Null
 foreach ($part in @('desktop','ui','core.cjs','package.json')) {Copy-Item -LiteralPath (Join-Path $project $part) -Destination $application -Recurse -Force}
 Copy-Item -LiteralPath (Join-Path $project 'README.md') -Destination $portable -Force
+if (Test-Path -LiteralPath (Join-Path $project 'docs')) { Copy-Item -LiteralPath (Join-Path $project 'docs') -Destination $portable -Recurse -Force }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Uninstall.ps1') -Destination $portable -Force
 $zip = Join-Path $release 'What Remained-1.1.0-portable.zip'
 if(Test-Path $zip){Remove-Item -LiteralPath $zip}
