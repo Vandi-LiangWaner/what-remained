@@ -1,0 +1,40 @@
+const fs=require('node:fs/promises');const path=require('node:path');const assert=require('node:assert/strict');
+module.exports=async({win,request,root})=>{
+  const js=code=>win.webContents.executeJavaScript(code,true);
+  const settle=async()=>{await new Promise(r=>setTimeout(r,250));await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');};
+  const capture=async(file)=>{await js('Reminiscence.state.center=Reminiscence.state.targetCenter;Reminiscence.state.scale=Reminiscence.state.targetScale;Reminiscence.render()');await settle();await win.webContents.capturePage();await settle();await fs.writeFile(file,(await win.webContents.capturePage()).toPNG());};
+  for(let i=0;i<80;i++){if(await js('!!window.Reminiscence?.state.ready'))break;await new Promise(r=>setTimeout(r,100));}
+  assert.ok(await js('!!window.Reminiscence?.state.ready'),'renderer started');
+  await js('window.Reminiscence.examples()');
+  await settle();
+  await js(`document.querySelector('#new-event').click();document.querySelector('#event-title').value='Shorebird passage survey';document.querySelector('#event-start').value='2025-03-01';document.querySelector('#event-end').value='2025-03-14';document.querySelector('#event-notes').value='Field notes from repeated counts along the tidal flats.';document.querySelector('#event-title').dispatchEvent(new Event('input',{bubbles:true}));window.Reminiscence.saveDraft()`);
+  assert.ok((await request('load')).events.some(e=>e.title==='Shorebird passage survey'),'event saved');
+  await js(`document.querySelector('#close-editor').click()`);await new Promise(r=>setTimeout(r,150));
+  await js(`document.querySelector('#search').value='repeated counts';window.Reminiscence.filterChanged()`);
+  assert.equal(await js('window.Reminiscence.state.lanes[0].events.length'),1);
+  await js(`document.querySelector('#pin-filter').click();document.querySelector('#pin-name').value='Field observations';document.querySelector('#confirm-pin').click()`);await new Promise(r=>setTimeout(r,150));
+  assert.equal((await request('load')).settings.pins.length,1);
+  await js(`document.querySelector('#clear-filter').click();window.Reminiscence.fit()`);await new Promise(r=>setTimeout(r,900));await settle();
+  const preview=path.resolve(__dirname,'../preview');await fs.mkdir(preview,{recursive:true});
+  await capture(path.join(preview,'timeline.png'));
+  await js(`document.querySelector('#new-event').click();document.querySelector('#event-title').value='The return of the shorebirds';document.querySelector('#event-start').value='2026-09';document.querySelector('#event-end').value='2027-03';document.querySelector('#event-place').value='Moreton Bay';document.querySelector('#event-species').value='Migratory shorebirds';document.querySelector('#event-text').value='Arrival, feeding, and seasonal use of the intertidal flats.'`);
+  await settle();
+  await capture(path.join(preview,'event-editor.png'));
+  await js(`document.querySelector('#editor').close();document.querySelector('#search').value='restoration';window.Reminiscence.filterChanged();document.querySelector('#pin-filter').click();document.querySelector('#pin-name').value='Restoration & recovery';document.querySelector('#confirm-pin').click()`);await settle();
+  await js(`document.querySelector('#clear-filter').click();window.Reminiscence.fit()`);await new Promise(r=>setTimeout(r,900));
+  assert.equal(await js(`document.querySelectorAll('dialog[open]').length`),0,'dialogs closed');
+  await js(`document.querySelector('[data-hide-current]').click()`);
+  win.setContentSize(1500,1330);await settle();
+  await capture(path.join(preview,'pinned-timelines.png'));
+  win.setContentSize(1500,940);await settle();
+  await js(`document.querySelector('#search').value='restoration';window.Reminiscence.filterChanged();window.Reminiscence.fit()`);await new Promise(r=>setTimeout(r,800));
+  await js(`document.querySelector('[data-event]')?.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}))`);await new Promise(r=>setTimeout(r,400));
+  assert.equal(await js(`document.querySelector('#hover-lens').hidden`),false,'period lens appears');
+  await capture(path.join(preview,'period-lens.png'));
+  // Stress the actual renderer with 12,000 records, including shared timestamps and periods.
+  const perf=await js(`(()=>{const R=window.Reminiscence;const baseline=R.state.events,filter=R.state.filter,pins=R.state.settings.pins;R.state.filter={query:'',categories:[],source:'all',from:'',to:''};R.state.settings.pins=[];R.state.showCurrent=true;const start=performance.now();R.state.events=Array.from({length:12000},(_,i)=>({id:'stress-'+i,title:'Survey '+i,start:String(1900+i%126),end:i%3===0?String(1901+i%126):'',category:'observation',color:'#5d7965'}));R.state.index=new Map(R.state.events.map(e=>[e.id,FieldCore.indexEvent(e)]));R.rebuild();R.state.center=Date.UTC(1960,0,1);R.state.scale=86400000*40;R.render();const ms=performance.now()-start;let t=performance.now();for(let i=0;i<10;i++){R.state.center+=86400000*100;R.render();}const result={ms,panFrameMs:(performance.now()-t)/10,cards:document.querySelectorAll('.event-card').length,events:R.state.events.length};R.state.events=baseline;R.state.filter=filter;R.state.settings.pins=pins;R.rebuild();return result})()`);
+  assert.ok(perf.cards>0 && perf.cards<100,'virtualized renderer draws a bounded, nonempty view');
+  assert.ok(await js(`getComputedStyle(document.body).fontFamily.includes('Palatino')`));
+  console.log('ELECTRON_SMOKE_OK',JSON.stringify(perf));
+  console.log('PREVIEW_DIRECTORY',preview);
+};
