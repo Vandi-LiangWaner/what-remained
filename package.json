@@ -1,9 +1,11 @@
 {
-  "name": "reminiscence",
-  "productName": "Reminiscence",
-  "version": "1.0.0",
+  "name": "what-remained",
+  "productName": "What Remained",
+  "version": "1.1.0",
   "description": "An ecological notebook across time",
   "main": "desktop/main.cjs",
   "private": true,
-  "scripts": {"test": "node --test tests/*.test.cjs"}
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  }
 }

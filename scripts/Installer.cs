@@ -12,14 +12,14 @@ class Installer : Form {
   Label status = new Label();
   CheckBox launch = new CheckBox();
   public Installer() {
-    Text = "Reminiscence · Setup"; ClientSize = new Size(550, 305); FormBorderStyle = FormBorderStyle.FixedDialog;
-    MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen; BackColor = Color.FromArgb(247,245,239);
-    Font = new Font("Palatino Linotype", 10);
-    Controls.Add(new Label { Text="Reminiscence", Font=new Font("Palatino Linotype",25), Location=new Point(28,23), Size=new Size(490,45) });
+    Text = "What Remained · Setup"; ClientSize = new Size(550, 305); FormBorderStyle = FormBorderStyle.FixedDialog;
+    MaximizeBox = false; StartPosition = FormStartPosition.CenterScreen; BackColor = Color.FromArgb(250,251,250);
+    Font = new Font("Segoe UI", 10);
+    Controls.Add(new Label { Text="What Remained", Font=new Font("Palatino Linotype",25), Location=new Point(28,23), Size=new Size(490,45) });
     Controls.Add(new Label { Text="An ecological notebook across time.", ForeColor=Color.DimGray, Location=new Point(31,75), Size=new Size(480,25) });
     Controls.Add(new Label { Text="Install on this computer", Location=new Point(31,120), Size=new Size(460,23) });
-    destination.SetBounds(31,148,485,28);destination.Text=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Reminiscence");Controls.Add(destination);
-    launch.Text="Open Reminiscence after installation";launch.Checked=true;launch.SetBounds(31,188,455,28);Controls.Add(launch);
+    destination.SetBounds(31,148,485,28);destination.Text=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","What Remained");Controls.Add(destination);
+    launch.Text="Open What Remained after installation";launch.Checked=true;launch.SetBounds(31,188,455,28);Controls.Add(launch);
     status.SetBounds(31,245,335,35);Controls.Add(status);
     install.Text="Install";install.SetBounds(390,239,126,35);install.BackColor=Color.FromArgb(64,91,72);install.ForeColor=Color.White;install.FlatStyle=FlatStyle.Flat;install.Click+=Run;Controls.Add(install);
   }
@@ -27,9 +27,9 @@ class Installer : Form {
     install.Enabled=false;destination.Enabled=false;
     try {
       string target=Path.GetFullPath(destination.Text);Directory.CreateDirectory(target);
-      string exe=Path.Combine(target,"Reminiscence.exe");
-      foreach (Process running in Process.GetProcessesByName("Reminiscence")) {
-        try {if(String.Equals(running.MainModule.FileName,exe,StringComparison.OrdinalIgnoreCase))throw new IOException("Close Reminiscence before updating this installation.");}catch(System.ComponentModel.Win32Exception){}
+      string exe=Path.Combine(target,"What Remained.exe");
+      foreach (Process running in Process.GetProcessesByName("What Remained")) {
+        try {if(String.Equals(running.MainModule.FileName,exe,StringComparison.OrdinalIgnoreCase))throw new IOException("Close What Remained before updating this installation.");}catch(System.ComponentModel.Win32Exception){}
       }
       status.Text="Unpacking the notebook…";Application.DoEvents();
       using(Stream payload=Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip"))
@@ -41,9 +41,9 @@ class Installer : Form {
           Directory.CreateDirectory(Path.GetDirectoryName(file));entry.ExtractToFile(file,true);
         }
       }
-      string programs=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),"Reminiscence");Directory.CreateDirectory(programs);
-      Shortcut(Path.Combine(programs,"Reminiscence.lnk"),exe,target);
-      Shortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),"Reminiscence.lnk"),exe,target);
+      string programs=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),"What Remained");Directory.CreateDirectory(programs);
+      Shortcut(Path.Combine(programs,"What Remained.lnk"),exe,target);
+      Shortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),"What Remained.lnk"),exe,target);
       status.Text="Installed. Your field awaits.";install.Text="Close";
       if(launch.Checked)Process.Start(exe);
       install.Click-=Run;install.Click+=(s,e)=>Close();install.Enabled=true;

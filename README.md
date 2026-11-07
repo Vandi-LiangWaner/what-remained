@@ -1,12 +1,18 @@
-# Reminiscence
+# What Remained
 
-A private ecological notebook across time. A minimalist Windows desktop app in Palatino Linotype, with local SQLite storage and a read-only connection to Literature Box.
+A private ecological notebook across time. A modern, minimalist Windows desktop app with Palatino headings and event content, with local SQLite storage and a read-only connection to Literature Box.
 
 ## Preview build
 
-Run `release/Reminiscence-portable/Reminiscence.exe` for a local preview, or run `release/Reminiscence-1.0.0-Setup.exe` to install. The installer creates Start menu and desktop shortcuts. It does not require administrator rights. This initial preview is unsigned.
+Run `release/What Remained-portable/What Remained.exe` for a local preview, or run `release/What Remained-1.1.0-Setup.exe` to install. The installer creates Start menu and desktop shortcuts. It does not require administrator rights. This initial preview is unsigned.
 
 Your notebook lives in **Documents/Reminiscence**, independently of the application folder. The SQLite database is `reminiscence.sqlite`; managed files live in `Attachments`. An automatic database backup is refreshed after edits in `Backups`. Use **Notebook settings → Export portable backup** to include attachments in a portable JSON backup. Import merges event IDs and updates matching records. To remove the application, right-click `Uninstall.ps1` in its installation folder and run it with PowerShell; notebook data is retained.
+
+The app was previously named Reminiscence. Its existing notebook directory, database filenames, and backup format identifier are deliberately retained so the rename opens the same data and remains compatible with older backups. The visible app name, executable, installer, and shortcuts are now What Remained.
+
+The timeline occupies the page itself, with a compact toolbar and one shared date ruler. Pinned filters become aligned rows on the same unboxed canvas, with continuous time guides and one shared travel slider. Controls use Segoe UI; headings, event content, and long notes retain Palatino Linotype.
+
+Travel defaults to Fast (4× wheel distance), accelerates larger gestures, and adds a 3× boost while holding Shift. Choose Gentle, Standard, Fast, or Very fast in notebook settings. Shift + arrow keys also travels farther.
 
 ## Your landscape
 
@@ -24,7 +30,7 @@ Your notebook lives in **Documents/Reminiscence**, independently of the applicat
 
 The app looks for **Documents/Literature Box Library/literature-box.sqlite**, matching the current LitBox configuration in this workspace. Choose another SQLite library from the Literature Box panel if needed. Classic and Stacks currently point to that same library; you can select a different library explicitly.
 
-While open, Reminiscence checks the source every 20 seconds, reads it in SQLite read-only mode, and updates its own paper copies when the source revision changes. It never writes to Literature Box. Papers appear at publication dates; a year-only date remains year-level. Invalid or missing publication dates go into the undated list. Source fields are read-only here; add your own notes, custom fields, attachments, and category/color assignments separately. Paper figures are copied to local managed files. Papers removed from the source are retained with a source-unavailable label. Hiding a paper only hides its timeline copy, and hidden papers can be restored in settings. Only one source library is connected at a time; switching libraries treats matching LitBox card IDs as the same paper.
+While open, What Remained checks the source every 20 seconds, reads it in SQLite read-only mode, and updates its own paper copies when the source revision changes. It never writes to Literature Box. Papers appear at publication dates; a year-only date remains year-level. Invalid or missing publication dates go into the undated list. Source fields are read-only here; add your own notes, custom fields, attachments, and category/color assignments separately. Paper figures are copied to local managed files. Papers removed from the source are retained with a source-unavailable label. Hiding a paper only hides its timeline copy, and hidden papers can be restored in settings. Only one source library is connected at a time; switching libraries treats matching LitBox card IDs as the same paper.
 
 Sync happens only while this app is open. Standalone source synchronization uses the `app_state.cards_json` and `revision` format of this LitBox version.
 

@@ -28,8 +28,8 @@ function updateSync(){
 function filterDescription(f){return [f.query && `“${f.query}”`,f.categories?.map(id=>C.settings.categories.find(c=>c.id===id)?.name).join(', '),f.source!=='all'&&f.source==='papers'?'Literature':f.source==='events'?'My events':'',f.from&&`from ${f.from}`,f.to&&`until ${f.to}`].filter(Boolean).join(' · ')||'All events';}
 function rebuild(){
   const usable=C.events.filter(e=>!e.hidden);
-  const definitions=[...(C.showCurrent?[{id:'current',name:'The landscape',filter:C.filter}]:[]),...C.settings.pins];
-  if(!definitions.length){C.showCurrent=true;definitions.push({id:'current',name:'The landscape',filter:C.filter});}
+  const definitions=[...(C.showCurrent?[{id:'current',name:'All events',filter:C.filter}]:[]),...C.settings.pins];
+  if(!definitions.length){C.showCurrent=true;definitions.push({id:'current',name:'All events',filter:C.filter});}
   C.lanes=definitions.map(lane=>({...lane,events:usable.filter(e=>matches(e,lane.filter,C.index.get(e.id)||''))}));
   const selected=new Set(C.lanes.flatMap(l=>l.events.map(e=>e.id)));
   const undated=usable.filter(e=>selected.has(e.id)&&parseDate(e.start)===null);
@@ -37,17 +37,15 @@ function rebuild(){
   $('#undated-button').hidden=!undated.length;$('#undated-button').textContent=`${undated.length} undated ↗`;
   $('#show-current').hidden=C.showCurrent;
   $('#empty').hidden=usable.length>0;
-  $('#lanes').hidden=usable.length===0;
-  $('#lanes').innerHTML=C.lanes.map(lane=>`<section class="lane" data-lane="${esc(lane.id)}"><div class="lane-head"><span class="swatch" style="--c:${lane.id==='current'?'#89967d':'#b28c61'}"></span><span class="lane-name">${esc(lane.name)}</span><span class="lane-query">${esc(filterDescription(lane.filter))}</span><span class="lane-count">${lane.events.length.toLocaleString()} records</span>${lane.id==='current'?C.settings.pins.length?'<button data-hide-current title="Hide this lane">Hide</button>':'':`<button data-fit-lane="${esc(lane.id)}">Fit</button><button data-unpin="${esc(lane.id)}" title="Unpin view">×</button>`}</div><div class="track" tabindex="0" role="region" aria-label="${esc(lane.name)} timeline. Arrow keys pan, plus and minus zoom."></div><div class="lane-bottom"><span>EARLIER</span><input type="range" min="0" max="1000" value="500" aria-label="Travel through time"><span>LATER</span></div></section>`).join('');
+  $('#timeline-canvas').hidden=usable.length===0;$('#travel').hidden=usable.length===0;
+  $('#lanes').style.setProperty('--lane-count',C.lanes.length);
+  $('#lanes').innerHTML=C.lanes.map(lane=>`<section class="lane" data-lane="${esc(lane.id)}"><div class="lane-head"><span class="swatch" style="--c:${lane.id==='current'?'#89967d':'#b28c61'}"></span><span class="lane-name">${esc(lane.name)}</span><span class="lane-query">${esc(filterDescription(lane.filter))}</span><span class="lane-count">${lane.events.length.toLocaleString()} records</span>${lane.id==='current'?C.settings.pins.length?'<button data-hide-current title="Hide this lane">Hide</button>':'':`<button data-fit-lane="${esc(lane.id)}">Fit</button><button data-unpin="${esc(lane.id)}" title="Unpin view">×</button>`}</div><div class="track" tabindex="0" role="region" aria-label="${esc(lane.name)} timeline. Arrow keys pan, plus and minus zoom."></div></section>`).join('');
   $('#filter-count').textContent=[C.filter.categories.length,C.filter.source!=='all',!!C.filter.from,!!C.filter.to].reduce((a,b)=>a+Number(b),0)||'';
   for(const node of document.querySelectorAll('.lane')){
     const track=node.querySelector('.track');
-    track.addEventListener('wheel',wheel,{passive:false});
     track.addEventListener('pointerdown',panStart);
     track.addEventListener('keydown',navigateKey);
     track.addEventListener('dblclick',event=>{if(event.target.closest('button'))return;const x=event.clientX-track.getBoundingClientRect().left;openEditor(null,C.center+(x-track.clientWidth/2)*C.scale);});
-    const slider=node.querySelector('input[type=range]');
-    slider.addEventListener('input',()=>{const bounds=allBounds();if(bounds)moveTo(bounds[0]+Number(slider.value)/1000*(bounds[1]-bounds[0]),C.targetScale);});
   }
   render();
 }
@@ -68,7 +66,8 @@ function moveTo(center,scale){
   clearTimeout(viewTimer);viewTimer=setTimeout(()=>{call('settings',{view:{center:C.targetCenter,scale:C.targetScale,showCurrent:C.showCurrent}}).catch(report);},700);
 }
 function animate(){
-  C.center+=(C.targetCenter-C.center)*.24;C.scale+=(C.targetScale-C.scale)*.24;
+  const ease=Math.abs(C.targetCenter-C.center)/C.scale>500?.4:.28;
+  C.center+=(C.targetCenter-C.center)*ease;C.scale+=(C.targetScale-C.scale)*.28;
   if(Math.abs(C.center-C.targetCenter)<C.scale*.05&&Math.abs(C.scale-C.targetScale)<C.scale*.0005){C.center=C.targetCenter;C.scale=C.targetScale;frame=0;render();return;}
   render();frame=requestAnimationFrame(animate);
 }
@@ -82,7 +81,12 @@ function wheel(event){
   let dx=event.deltaX,dy=event.deltaY;
   if(event.deltaMode===1){dx*=24;dy*=24;}if(event.deltaMode===2){dx*=event.currentTarget.clientWidth;dy*=400;}
   if(event.ctrlKey||event.metaKey)zoom(Math.exp(dy*.0025),event.clientX-event.currentTarget.getBoundingClientRect().left);
-  else moveTo(C.targetCenter+(Math.abs(dx)>Math.abs(dy)?dx:dy)*C.targetScale,C.targetScale);
+  else {
+    const delta=Math.abs(dx)>Math.abs(dy)?dx:dy;
+    const speed=Math.max(.5,Math.min(12,Number(C.settings.scrollSpeed)||4));
+    const acceleration=Math.max(1,Math.min(2.4,Math.abs(delta)/110));
+    moveTo(C.targetCenter+delta*C.targetScale*speed*acceleration*(event.shiftKey?3:1),C.targetScale);
+  }
 }
 function panStart(event){
   if(event.button!==0||event.target.closest('button'))return;
@@ -92,7 +96,7 @@ function panStart(event){
   const end=()=>{track.classList.remove('dragging');track.removeEventListener('pointermove',move);track.removeEventListener('pointerup',end);track.removeEventListener('pointercancel',end);if(moved)track.dataset.moved='true';};
   track.addEventListener('pointermove',move);track.addEventListener('pointerup',end);track.addEventListener('pointercancel',end);
 }
-function navigateKey(e){if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();moveTo(C.targetCenter+(e.key==='ArrowLeft'?-1:1)*C.scale*180,C.targetScale);}if(e.key==='+'||e.key==='=')zoom(.65);if(e.key==='-')zoom(1.5);}
+function navigateKey(e){if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();moveTo(C.targetCenter+(e.key==='ArrowLeft'?-1:1)*C.scale*(e.shiftKey?900:300),C.targetScale);}if(e.key==='+'||e.key==='=')zoom(.65);if(e.key==='-')zoom(1.5);}
 function ticks(left,right,width){
   const span=right-left,target=span/Math.max(2,width/130),result=[];
   if(target<DAY*25){const steps=[1/24,1/4,1,2,7,14,28];const step=(steps.find(d=>d*DAY>=target)||28)*DAY;for(let t=Math.ceil(left/step)*step;t<=right;t+=step)result.push({t,label:fmt(t,target<DAY?{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}:{day:'numeric',month:'short',year:'numeric'})});}
@@ -104,22 +108,26 @@ function render(){
   const bounds=allBounds();
   C.lanes.forEach(lane=>{
     const track=document.querySelector(`[data-lane="${CSS.escape(lane.id)}"] .track`);if(!track)return;
-    const width=track.clientWidth,left=C.center-width*C.scale/2,right=C.center+width*C.scale/2,axis=184;
+    const width=track.clientWidth,height=track.clientHeight,axis=height/2;
     const groups=visibleGroups(lane.events,C.center,C.scale,width);
     let svg=`<line class="axis-line" x1="0" x2="${width}" y1="${axis}" y2="${axis}"/>`,cards='';
-    for(const tick of ticks(left,right,width)){const x=(tick.t-left)/C.scale;svg+=`<line class="tick-line" x1="${x}" x2="${x}" y1="22" y2="345"/><text class="tick-text" x="${x+5}" y="${axis+24}">${esc(tick.label)}</text>`;}
     groups.forEach((g,i)=>{
-      const event=g.events[0],c=color(event),top=i%2===0?48:239,cardX=Math.max(8,Math.min(width-170,g.x-81));
-      const yEnd=top<axis?top+98:top;
+      const event=g.events[0],c=color(event),top=i%2===0?axis-116:axis+30,cardX=Math.max(8,Math.min(width-170,g.x-81));
+      const yEnd=top<axis?top+88:top;
       if(g.events.length===1 && event.end){const x1=Math.max(0,g.startX),x2=Math.min(width,g.endX);svg+=`<g style="--c:${c}"><rect class="period" x="${x1}" y="${axis-7}" width="${Math.max(3,x2-x1)}" height="14" rx="3"/><path class="period-outline" d="M${x1},${axis-7}V${axis+7}M${x2},${axis-7}V${axis+7}"/></g>`;}
       svg+=`<g style="--c:${c}"><path class="connector" d="M${g.x},${axis}V${yEnd}"/><circle class="anchor" cx="${g.x}" cy="${axis}" r="4"/></g>`;
       const attachment=event.attachments?.find(a=>a.image);
       cards+=g.events.length>1?`<button class="event-card cluster" data-cluster="${i}" data-lane-id="${esc(lane.id)}" style="left:${cardX}px;top:${top}px;--c:${c}"><span class="cluster-count">${g.events.length}</span><strong>events close in time</strong><small>Click to explore this cluster ↗</small></button>`:`<button class="event-card ${attachment?'has-image':''}" data-event="${esc(event.id)}" style="left:${cardX}px;top:${top}px;--c:${c}"><span class="event-date">${esc(dateLabel(event.start))}${event.end?' — '+esc(dateLabel(event.end)):''}</span><strong>${esc(event.title)}</strong><small>${esc(event.place||event.source?.authors||categoryName(event))}${event.attachments?.length?' · ▧':''}</small>${attachment?`<img src="${asset(attachment)}" alt="">`:''}</button>`;
     });
-    track.innerHTML=`<svg width="${width}" height="368" aria-hidden="true">${svg}</svg>${cards}${!groups.length?`<div class="lane-empty">${lane.events.some(e=>e.start)?'No events here. Keep travelling, or fit the view.':lane.events.length?'These records have no date yet. Open the undated list.':'No events match this view.'}</div>`:''}`;
-    const slider=track.parentElement.querySelector('input[type=range]');if(bounds && document.activeElement!==slider)slider.value=bounds[1]===bounds[0]?500:Math.max(0,Math.min(1000,(C.center-bounds[0])/(bounds[1]-bounds[0])*1000));
+    track.innerHTML=`<svg width="${width}" height="${height}" aria-hidden="true">${svg}</svg>${cards}${!groups.length?`<div class="lane-empty">${lane.events.some(e=>e.start)?'No events here. Keep travelling, or fit the view.':lane.events.length?'These records have no date yet. Open the undated list.':'No events match this view.'}</div>`:''}`;
   });
   const width=$('.track')?.clientWidth||1100;
+  const canvasHeight=$('#timeline-canvas').clientHeight;
+  const marks=ticks(C.center-width*C.scale/2,C.center+width*C.scale/2,width);
+  $('#time-ruler').innerHTML=`<svg width="${width}" height="32">${marks.map(t=>`<text class="tick-text" x="${(t.t-C.center)/C.scale+width/2+5}" y="21">${esc(t.label)}</text>`).join('')}</svg>`;
+  $('#canvas-grid').setAttribute('width',width);$('#canvas-grid').setAttribute('height',canvasHeight);
+  $('#canvas-grid').innerHTML=marks.map(t=>{const x=(t.t-C.center)/C.scale+width/2;return `<line class="tick-line" x1="${x}" x2="${x}" y1="32" y2="${canvasHeight}"/>`;}).join('');
+  const slider=$('#travel-slider');if(bounds&&document.activeElement!==slider)slider.value=bounds[1]===bounds[0]?500:Math.max(0,Math.min(1000,(C.center-bounds[0])/(bounds[1]-bounds[0])*1000));
   $('#range-label').textContent=`${fmt(Math.max(parseDate('0001'),C.center-width*C.scale/2),{month:'short',year:'numeric'})} — ${fmt(Math.min(parseDate('9999'),C.center+width*C.scale/2),{month:'short',year:'numeric'})}`;
   const span=width*C.scale/DAY;$('#zoom-label').textContent=span<3?'Hours':span<70?'Days':span<750?'Months':span<36525?'Years':'Centuries';
 }
@@ -145,8 +153,8 @@ function listEvents(title,events){
 }
 function pinFilter(){panel('PIN A VIEW',`<h3>A thread through the landscape.</h3><p>${esc(filterDescription(C.filter))}</p><label>Name this timeline<input id="pin-name" placeholder="e.g. Wetland restoration" style="width:100%;margin:10px 0 17px" maxlength="100"></label><button id="confirm-pin" class="primary">Pin timeline</button><p>Pinned timelines retain this filter and follow the same time scale. New matching records appear automatically.</p>`);$('#pin-name').focus();}
 function categoriesPanel(){panel('CATEGORIES & COLORS',`<h3>A palette of connections.</h3><p>Choose your own names and colors. Changing a category color updates its connecting lines.</p><div id="category-editor">${C.settings.categories.map(c=>`<div class="category-edit" data-id="${esc(c.id)}"><input type="color" value="${esc(c.color)}" aria-label="Category color"><input type="text" value="${esc(c.name)}" aria-label="Category name"><button data-delete-category="${esc(c.id)}" aria-label="Delete category">×</button></div>`).join('')}</div><button id="add-category">＋ Category</button><button id="save-categories" class="primary">Apply palette</button><p>Deleting a category keeps its events and their individual colors.</p>`);}
-function libraryPanel(){panel('LITERATURE BOX',`<h3>Your reading, in time.</h3><p>${esc(C.syncStatus.message)}</p><div class="settings-row"><p>Read-only sync checks for changes every 20 seconds while Reminiscence is open. Publication years remain year-level dates. Every field on a paper card is searchable. Your own notes and attachments are kept separately.</p><code>${esc(C.settings.sourcePath||'No library selected')}</code></div><button id="choose-library">Choose library…</button><button id="sync-now">Sync now</button><button id="toggle-sync">${C.settings.sync?'Pause':'Resume'} sync</button><p>Removed source cards are retained with a source-unavailable label. Hidden papers stay hidden. Source images are shown when opening a paper; attachments you add here are saved locally.</p>`);}
-function settingsPanel(){panel('YOUR NOTEBOOK',`<h3>Kept close. Remembered well.</h3><div class="settings-row"><button id="export-backup">Export portable backup</button><button id="import-backup">Import & merge backup…</button><p>Portable backups include your events, categories, pinned views, and attached files. Imports merge by event ID; matching IDs are updated. Your automatic database backup is in the Backups folder.</p></div><div class="settings-row"><button id="open-folder">Open notebook folder</button><p><code>${esc(C.root)}</code></p><button id="settings-categories">Categories & colors</button><button id="settings-library">Literature Box connection</button></div><div class="settings-row"><button id="restore-papers">Restore hidden papers</button><p>No accounts, telemetry, or cloud services. Files stay on this computer.</p></div>`);}
+function libraryPanel(){panel('LITERATURE BOX',`<h3>Your reading, in time.</h3><p>${esc(C.syncStatus.message)}</p><div class="settings-row"><p>Read-only sync checks for changes every 20 seconds while What Remained is open. Publication years remain year-level dates. Every field on a paper card is searchable. Your own notes and attachments are kept separately.</p><code>${esc(C.settings.sourcePath||'No library selected')}</code></div><button id="choose-library">Choose library…</button><button id="sync-now">Sync now</button><button id="toggle-sync">${C.settings.sync?'Pause':'Resume'} sync</button><p>Removed source cards are retained with a source-unavailable label. Hidden papers stay hidden. Source images are shown when opening a paper; attachments you add here are saved locally.</p>`);}
+function settingsPanel(){panel('YOUR NOTEBOOK',`<h3>Notebook settings</h3><div class="settings-row"><label>Scroll speed <select id="scroll-speed">${[[1,'Gentle'],[2,'Standard'],[4,'Fast'],[8,'Very fast']].map(([value,name])=>`<option value="${value}" ${Number(C.settings.scrollSpeed||4)===value?'selected':''}>${name}</option>`).join('')}</select></label><p>Larger movements accelerate. Hold Shift for a 3× speed boost. Ctrl + scroll zooms.</p></div><div class="settings-row"><button id="export-backup">Export portable backup</button><button id="import-backup">Import & merge backup…</button><p>Portable backups include your events, categories, pinned views, and attached files. Imports merge by event ID; matching IDs are updated. Your automatic database backup is in the Backups folder.</p></div><div class="settings-row"><button id="open-folder">Open notebook folder</button><p><code>${esc(C.root)}</code></p><button id="settings-categories">Categories & colors</button><button id="settings-library">Literature Box connection</button></div><div class="settings-row"><button id="restore-papers">Restore hidden papers</button><p>No accounts, telemetry, or cloud services. Files stay on this computer.</p></div>`);}
 function helpPanel(){panel('A SMALL FIELD GUIDE',`<h3>Make room for time.</h3><p><b>Travel.</b> Scroll or drag a timeline. The bottom slider travels across your whole collection. All pinned views move together. Use Ctrl + scroll, the + / − buttons, or the keyboard to zoom.</p><p><b>Record.</b> Add a point in time or give it an end date. Hover a period for its magnified lens. Attach pictures, PDFs, or other files; add captions and any custom fields you need. Double-click empty timeline space to add an event there.</p><p><b>Connect.</b> Search matches words across every field, source metadata, captions, and filenames. Multiple words must all appear. Categories are combined with OR; other filters are combined with AND. Date filters include periods that overlap the chosen range.</p><p><b>Compare.</b> Pin a filter to create a separate timeline; repeat to compare several threads. Each pin remembers the filter. Use the current search view for exploring without changing pins.</p><p><b>Read density.</b> Nearby events gather into numbered clusters. Open a cluster to browse every event, or zoom closer. Nothing is dropped from a dense view.</p><p><b>Keep.</b> Event changes save in the background after a short pause and before you close the app. Export a portable backup to move the notebook, including its files. A database backup is also refreshed after edits.</p><p><b>Shortcuts.</b> / focuses search · N adds an event · arrows pan a focused timeline · + / − zoom · Esc closes dialogs.</p>`);}
 function makeDraft(time){const d=new Date(time??Date.now());return {id:uid(),title:'',start:d.toISOString().slice(0,10),end:'',category:C.settings.categories[0]?.id||'',color:C.settings.categories[0]?.color||'#5d7965',place:'',species:'',tags:'',text:'',notes:'',extraFields:{},attachments:[]};}
 function openEditor(event,time){
@@ -241,7 +249,7 @@ document.addEventListener('click',async event=>{try{
     case 'load-examples':await examples();break;
     case 'close-panel':$('#panel').close();break;
     case 'close-editor':await closeEditor();break;
-    case 'delete-event':if(confirm(activeDraft.source?'Hide this paper from Reminiscence? Its Literature Box card is kept.':'Delete this event?')){clearTimeout(draftTimer);await persistPromise;await call('remove',activeDraft.id);C.events=C.events.filter(e=>e.id!==activeDraft.id);activeDraft=null;draftDirty=false;$('#editor').close();await load();}break;
+    case 'delete-event':if(confirm(activeDraft.source?'Hide this paper from What Remained? Its Literature Box card is kept.':'Delete this event?')){clearTimeout(draftTimer);await persistPromise;await call('remove',activeDraft.id);C.events=C.events.filter(e=>e.id!==activeDraft.id);activeDraft=null;draftDirty=false;$('#editor').close();await load();}break;
     case 'add-field':collectDraft();$('#extra-fields').insertAdjacentHTML('beforeend','<div class="extra-row"><input class="extra-key" placeholder="Field name" aria-label="Field name"><textarea class="extra-value" placeholder="Anything you want to record" aria-label="Field value"></textarea><button type="button" data-remove-field aria-label="Remove field">×</button></div>');break;
     case 'add-attachment':{const files=await call('attach');if(files.length){collectDraft();activeDraft.attachments.push(...files);renderAttachments();draftChanged();}break;}
     case 'open-paper-link':{const s=activeDraft.source;await call('openLink',s.link||`https://doi.org/${s.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//,'')}`);break;}
@@ -253,6 +261,10 @@ document.addEventListener('click',async event=>{try{
 }catch(error){report(error);}});
 async function closePanel(){if($('#panel').open)$('#panel').close();}
 $('#search').addEventListener('input',()=>{clearTimeout(filterTimer);filterTimer=setTimeout(filterChanged,130);});
+$('#timeline-canvas').addEventListener('wheel',wheel,{passive:false});
+$('#time-ruler').addEventListener('pointerdown',panStart);
+document.addEventListener('change',event=>{if(event.target.id==='scroll-speed')saveSettings({scrollSpeed:Number(event.target.value)}).then(()=>toast('Scroll speed updated.')).catch(report);});
+$('#travel-slider').addEventListener('input',()=>{const bounds=allBounds();if(bounds)moveTo(bounds[0]+Number($('#travel-slider').value)/1000*(bounds[1]-bounds[0]),C.targetScale);});
 for(const id of ['source-filter','from-filter','to-filter'])$('#'+id).addEventListener('change',filterChanged);
 $('#event-form').addEventListener('input',draftChanged);
 $('#event-category').addEventListener('change',()=>{$('#event-color').value=C.settings.categories.find(c=>c.id===$('#event-category').value)?.color||'#5d7965';draftChanged();});

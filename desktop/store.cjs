@@ -7,7 +7,7 @@ const root = workerData.root;
 fs.mkdirSync(root, {recursive:true}); fs.mkdirSync(path.join(root,'Attachments'),{recursive:true}); fs.mkdirSync(path.join(root,'Backups'),{recursive:true});
 const db = new DatabaseSync(path.join(root,'reminiscence.sqlite'));
 db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=4000; CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY, body TEXT NOT NULL);");
-const defaults = {categories:[{id:'observation',name:'Observation',color:'#5d7965'},{id:'climate',name:'Climate',color:'#b77c54'},{id:'conservation',name:'Conservation',color:'#5b8596'},{id:'papers',name:'Literature',color:'#8b7597'}],pins:[],sync:true,sourcePath:workerData.sourcePath};
+const defaults = {categories:[{id:'observation',name:'Observation',color:'#5d7965'},{id:'climate',name:'Climate',color:'#b77c54'},{id:'conservation',name:'Conservation',color:'#5b8596'},{id:'papers',name:'Literature',color:'#8b7597'}],pins:[],scrollSpeed:4,sync:true,sourcePath:workerData.sourcePath};
 let settings = {...defaults,...JSON.parse(db.prepare('SELECT body FROM settings WHERE id=1').get()?.body || '{}')};
 let syncStatus = {state:'waiting',message:'Looking for Literature Box…'};
 const saveSettings = () => db.prepare('INSERT OR REPLACE INTO settings VALUES(1,?)').run(JSON.stringify(settings));
@@ -82,7 +82,7 @@ const methods = {
   settings(value) {settings={...settings,...value};saveSettings();backup();return settings;},
   sync() {sourceRevision=null;sync();return methods.load();},
   import(data) {
-    if (data?.format !== 'reminiscence' || data.version !== 1 || !Array.isArray(data.events)) throw Error('This is not a Reminiscence backup.');
+    if (data?.format !== 'reminiscence' || data.version !== 1 || !Array.isArray(data.events)) throw Error('This is not a What Remained backup.');
     data.events.forEach(validateEvent);
     db.exec('BEGIN');try {for(const event of data.events) put(event); db.exec('COMMIT');} catch(e){db.exec('ROLLBACK');throw e;}
     if(data.settings) {settings={...settings,categories:data.settings.categories || settings.categories,pins:data.settings.pins || settings.pins};saveSettings();}

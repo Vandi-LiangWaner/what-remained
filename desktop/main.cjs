@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {randomUUID} = require('node:crypto');
-app.setName('Reminiscence');
+app.setName('What Remained');
 protocol.registerSchemesAsPrivileged([{scheme:'field-asset',privileges:{standard:true,secure:true,supportFetchAPI:true}}]);
 const testMode = process.argv.includes('--smoke');
 const dataArg = process.argv.find(a=>a.startsWith('--data-dir='));
@@ -26,7 +26,7 @@ app.whenReady().then(async()=>{
     const entry=pending.get(message.id);if(!entry)return;pending.delete(message.id);
     message.error ? entry.reject(Error(message.error)) : entry.resolve(message.result);
   });
-  worker.on('error',error=>{for(const p of pending.values())p.reject(error);pending.clear();dialog.showErrorBox('Reminiscence',error.message);});
+  worker.on('error',error=>{for(const p of pending.values())p.reject(error);pending.clear();dialog.showErrorBox('What Remained',error.message);});
   protocol.handle('field-asset',request=>{try{return net.fetch(pathToFileURL(assetPath(decodeURIComponent(new URL(request.url).pathname.slice(1)))).href);}catch{return new Response('Not found',{status:404});}});
   ipcMain.handle('field:call',async(event,method,payload)=>{
     if(event.sender!==win.webContents)throw Error('Unknown window');
@@ -49,15 +49,15 @@ app.whenReady().then(async()=>{
       await request('settings',{sourcePath:result.filePaths[0],sync:true});return request('sync');
     }
     if(method==='export') {
-      const result=await dialog.showSaveDialog(win,{defaultPath:'Reminiscence.backup.json',filters:[{name:'Portable backup',extensions:['json']}]});if(result.canceled)return false;
+      const result=await dialog.showSaveDialog(win,{defaultPath:'What Remained.backup.json',filters:[{name:'Portable backup',extensions:['json']}]});if(result.canceled)return false;
       const data=await request('export');data.files={};
       for(const event of data.events)for(const a of [...(event.attachments||[]),...(event.paperAttachments||[])]) if(!data.files[a.id]) data.files[a.id]=(await fs.readFile(assetPath(a.id))).toString('base64');
       await fs.writeFile(result.filePath,JSON.stringify(data));return true;
     }
     if(method==='import') {
-      const result=await dialog.showOpenDialog(win,{properties:['openFile'],filters:[{name:'Reminiscence backup',extensions:['json']}]});if(result.canceled)return null;
+      const result=await dialog.showOpenDialog(win,{properties:['openFile'],filters:[{name:'What Remained backup',extensions:['json']}]});if(result.canceled)return null;
       const data=JSON.parse(await fs.readFile(result.filePaths[0],'utf8'));
-      if(data.format!=='reminiscence'||data.version!==1||!Array.isArray(data.events))throw Error('This is not a Reminiscence backup.');
+      if(data.format!=='reminiscence'||data.version!==1||!Array.isArray(data.events))throw Error('This is not a What Remained backup.');
       const {validateEvent}=require('../core.cjs');data.events.forEach(validateEvent);
       // Never overwrite existing attachment files during a merge. Remap identifiers instead.
       const remap=new Map();
@@ -70,7 +70,7 @@ app.whenReady().then(async()=>{
     }
     throw Error('Unsupported action');
   });
-  win=new BrowserWindow({width:1500,height:960,minWidth:960,minHeight:640,title:'Reminiscence',backgroundColor:'#f7f5ef',show:!testMode,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:!testMode,offscreen:testMode}});
+  win=new BrowserWindow({width:1500,height:960,minWidth:960,minHeight:640,title:'What Remained',backgroundColor:'#fafbfa',show:!testMode,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:!testMode,offscreen:testMode}});
   win.setMenuBarVisibility(false);
   win.webContents.setWindowOpenHandler(({url})=>{if(safeLink(url))shell.openExternal(url);return {action:'deny'};});
   win.webContents.on('will-navigate',(event,url)=>{if(url!==win.webContents.getURL()){event.preventDefault();if(safeLink(url))shell.openExternal(url);}});

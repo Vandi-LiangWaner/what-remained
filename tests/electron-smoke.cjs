@@ -7,6 +7,8 @@ module.exports=async({win,request,root})=>{
   assert.ok(await js('!!window.Reminiscence?.state.ready'),'renderer started');
   await js('window.Reminiscence.examples()');
   await settle();
+  const scrolling=await js(`(()=>{const R=Reminiscence,s=R.state,original=s.targetCenter,scale=s.targetScale;const track=document.querySelector('.track');track.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:100}));const normal=(s.targetCenter-original)/scale,before=s.targetCenter;track.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:100,shiftKey:true}));const boosted=(s.targetCenter-before)/scale;R.moveTo(original,scale);return {normal,boosted}})()`);
+  assert.ok(scrolling.normal>=390 && scrolling.boosted>=scrolling.normal*2.9,'fast scrolling and Shift boost work');
   await js(`document.querySelector('#new-event').click();document.querySelector('#event-title').value='Shorebird passage survey';document.querySelector('#event-start').value='2025-03-01';document.querySelector('#event-end').value='2025-03-14';document.querySelector('#event-notes').value='Field notes from repeated counts along the tidal flats.';document.querySelector('#event-title').dispatchEvent(new Event('input',{bubbles:true}));window.Reminiscence.saveDraft()`);
   assert.ok((await request('load')).events.some(e=>e.title==='Shorebird passage survey'),'event saved');
   await js(`document.querySelector('#close-editor').click()`);await new Promise(r=>setTimeout(r,150));
@@ -14,6 +16,8 @@ module.exports=async({win,request,root})=>{
   assert.equal(await js('window.Reminiscence.state.lanes[0].events.length'),1);
   await js(`document.querySelector('#pin-filter').click();document.querySelector('#pin-name').value='Field observations';document.querySelector('#confirm-pin').click()`);await new Promise(r=>setTimeout(r,150));
   assert.equal((await request('load')).settings.pins.length,1);
+  assert.equal(await js(`document.querySelectorAll('#time-ruler').length`),1,'shared time ruler');
+  assert.equal(await js(`document.querySelectorAll('input[type=range]').length`),1,'shared travel slider');
   await js(`document.querySelector('#clear-filter').click();window.Reminiscence.fit()`);await new Promise(r=>setTimeout(r,900));await settle();
   const preview=path.resolve(__dirname,'../preview');await fs.mkdir(preview,{recursive:true});
   await capture(path.join(preview,'timeline.png'));
@@ -34,7 +38,8 @@ module.exports=async({win,request,root})=>{
   // Stress the actual renderer with 12,000 records, including shared timestamps and periods.
   const perf=await js(`(()=>{const R=window.Reminiscence;const baseline=R.state.events,filter=R.state.filter,pins=R.state.settings.pins;R.state.filter={query:'',categories:[],source:'all',from:'',to:''};R.state.settings.pins=[];R.state.showCurrent=true;const start=performance.now();R.state.events=Array.from({length:12000},(_,i)=>({id:'stress-'+i,title:'Survey '+i,start:String(1900+i%126),end:i%3===0?String(1901+i%126):'',category:'observation',color:'#5d7965'}));R.state.index=new Map(R.state.events.map(e=>[e.id,FieldCore.indexEvent(e)]));R.rebuild();R.state.center=Date.UTC(1960,0,1);R.state.scale=86400000*40;R.render();const ms=performance.now()-start;let t=performance.now();for(let i=0;i<10;i++){R.state.center+=86400000*100;R.render();}const result={ms,panFrameMs:(performance.now()-t)/10,cards:document.querySelectorAll('.event-card').length,events:R.state.events.length};R.state.events=baseline;R.state.filter=filter;R.state.settings.pins=pins;R.rebuild();return result})()`);
   assert.ok(perf.cards>0 && perf.cards<100,'virtualized renderer draws a bounded, nonempty view');
-  assert.ok(await js(`getComputedStyle(document.body).fontFamily.includes('Palatino')`));
+  assert.equal(await js('document.title'),'What Remained');
+  assert.ok(await js(`getComputedStyle(document.querySelector('.brand h1')).fontFamily.includes('Palatino')`));
   console.log('ELECTRON_SMOKE_OK',JSON.stringify(perf));
   console.log('PREVIEW_DIRECTORY',preview);
 };
