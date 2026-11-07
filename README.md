@@ -2,6 +2,8 @@
 
 A private ecological notebook across time. A modern, minimalist Windows desktop app with Palatino headings and event content, with local SQLite storage and a read-only connection to Literature Box.
 
+**Vibe coding project:** developed iteratively with Codex.
+
 ## Download for Windows
 
 [Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
