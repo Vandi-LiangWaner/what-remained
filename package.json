@@ -1,7 +1,7 @@
 {
   "name": "what-remained",
   "productName": "What Remained",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "An ecological notebook across time",
   "main": "desktop/main.cjs",
   "private": true,

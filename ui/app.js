@@ -1,5 +1,5 @@
 /* Reminiscence — no framework, no network, only the visible landscape is drawn. */
-const {DAY,parseDate,eventTimes,plain,indexEvent,matches,validateEvent,visibleGroups}=window.FieldCore;
+const {DAY,parseDate,eventTimes,plain,indexEvent,matches,validateEvent,visibleGroups,columnWindow,eventPosition}=window.FieldCore;
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
@@ -11,6 +11,7 @@ const color=e=>/^#[a-f\d]{6}$/i.test(e.color)?e.color:(C.settings.categories.fin
 const categoryName=e=>C.settings.categories.find(c=>c.id===e.category)?.name||'Uncategorized';
 const asset=a=>`field-asset://local/${encodeURIComponent(a.id)}`;
 let toastTimer,filterTimer,viewTimer,frame=0,lensTimer,activeDraft=null,draftTimer,persistPromise=Promise.resolve(),draftDirty=false;
+const columnPositions=new Map(),columnModels=new Map(),trackModels=new Map();
 function toast(text) {$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,4000);}
 function report(error){console.error(error);toast(error.message||String(error));}
 function accept(data,initial=false){
@@ -27,10 +28,11 @@ function updateSync(){
 }
 function filterDescription(f){return [f.query && `“${f.query}”`,f.categories?.map(id=>C.settings.categories.find(c=>c.id===id)?.name).join(', '),f.source!=='all'&&f.source==='papers'?'Literature':f.source==='events'?'My events':'',f.from&&`from ${f.from}`,f.to&&`until ${f.to}`].filter(Boolean).join(' · ')||'All events';}
 function rebuild(){
+  rememberColumns();
   const usable=C.events.filter(e=>!e.hidden);
   const definitions=[...(C.showCurrent?[{id:'current',name:'All events',filter:C.filter}]:[]),...C.settings.pins];
   if(!definitions.length){C.showCurrent=true;definitions.push({id:'current',name:'All events',filter:C.filter});}
-  C.lanes=definitions.map(lane=>({...lane,events:usable.filter(e=>matches(e,lane.filter,C.index.get(e.id)||''))}));
+  C.lanes=definitions.map(lane=>({...lane,events:usable.filter(e=>matches(e,lane.filter,C.index.get(e.id)||'')).sort((a,b)=>(eventTimes(a).a??Infinity)-(eventTimes(b).a??Infinity))}));
   const selected=new Set(C.lanes.flatMap(l=>l.events.map(e=>e.id)));
   const undated=usable.filter(e=>selected.has(e.id)&&parseDate(e.start)===null);
   $('#event-count').textContent=`${selected.size.toLocaleString()} of ${usable.length.toLocaleString()} records`;
@@ -77,9 +79,14 @@ function zoom(factor,x){
   moveTo(C.targetCenter+(x===undefined?0:x-width/2)*(C.targetScale-next),next);
 }
 function wheel(event){
-  event.preventDefault();hideLens();
+  hideLens();
   let dx=event.deltaX,dy=event.deltaY;
   if(event.deltaMode===1){dx*=24;dy*=24;}if(event.deltaMode===2){dx*=event.currentTarget.clientWidth;dy*=400;}
+  const column=event.target.closest('.event-column');
+  if(column&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&Math.abs(dy)>=Math.abs(dx)&&column.scrollHeight>column.clientHeight){
+    event.preventDefault();column.scrollTop+=dy;return;
+  }
+  event.preventDefault();
   if(event.ctrlKey||event.metaKey)zoom(Math.exp(dy*.0025),event.clientX-event.currentTarget.getBoundingClientRect().left);
   else {
     const delta=Math.abs(dx)>Math.abs(dy)?dx:dy;
@@ -89,7 +96,7 @@ function wheel(event){
   }
 }
 function panStart(event){
-  if(event.button!==0||event.target.closest('button'))return;
+  if(event.button!==0||event.target.closest('button,.event-column'))return;
   const track=event.currentTarget,startX=event.clientX,center=C.targetCenter;let moved=false;
   track.setPointerCapture(event.pointerId);track.classList.add('dragging');hideLens();
   const move=e=>{if(Math.abs(e.clientX-startX)>3)moved=true;moveTo(center-(e.clientX-startX)*C.targetScale,C.targetScale);};
@@ -104,22 +111,113 @@ function ticks(left,right,width){
   else{const years=target/(DAY*365.2425);const base=10**Math.floor(Math.log10(years));const step=[1,2,5,10].map(x=>x*base).find(x=>x>=years)||base*10;const first=Math.floor(new Date(left).getUTCFullYear()/step)*step;for(let y=Math.max(1,first);y<=Math.min(9999,new Date(right).getUTCFullYear()+step);y+=step){const d=new Date(0);d.setUTCFullYear(y,0,1);d.setUTCHours(0,0,0,0);result.push({t:d.getTime(),label:String(y)});}}
   return result;
 }
+function rememberColumns(){
+  for(const node of document.querySelectorAll('.event-column'))columnPositions.set(node.dataset.columnKey,node.scrollTop);
+  if(columnPositions.size>2000){const keep=[...columnPositions.entries()].slice(-1000);columnPositions.clear();keep.forEach(([key,value])=>columnPositions.set(key,value));}
+}
+function cardMarkup(event,left,top,extra=''){
+  const attachment=event.attachments?.find(a=>a.image);
+  return `<button class="event-card ${attachment?'has-image':''}" data-event="${esc(event.id)}" title="${esc(event.title)}" style="left:${left}px;top:${top}px;--c:${color(event)}" ${extra}><span class="event-date">${esc(dateLabel(event.start))}${event.end?' — '+esc(dateLabel(event.end)):''}</span><strong>${esc(event.title)}</strong><small>${esc(event.place||event.source?.authors||categoryName(event))}${event.attachments?.length?' · ▧':''}</small>${attachment?`<img src="${asset(attachment)}" alt="">`:''}</button>`;
+}
+function updateColumn(node){
+  const model=columnModels.get(node.dataset.columnKey);if(!model)return;
+  const view=columnWindow(model.events.length,node.scrollTop,model.height);
+  model.offset=node.scrollTop;model.start=view.start;model.end=view.end;
+  if(model.drawnStart===view.start&&model.drawnEnd===view.end)return;
+  model.drawnStart=view.start;model.drawnEnd=view.end;
+  let rows='';
+  for(let i=view.start;i<view.end;i++)rows+=`<div class="event-row" role="listitem" aria-posinset="${i+1}" aria-setsize="${model.events.length}" data-row="${i}" style="top:${i*88}px">${cardMarkup(model.events[i],0,0)}</div>`;
+  node.querySelector('.column-spacer').innerHTML=rows;
+}
+function columnKeydown(event,node){
+  const model=columnModels.get(node.dataset.columnKey);if(!model)return;
+  const key=event.key;if(!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(key))return;
+  event.preventDefault();event.stopPropagation();
+  const current=Number(event.target.closest('[data-row]')?.dataset.row??Math.floor(node.scrollTop/88));
+  const page=Math.max(1,Math.floor(node.clientHeight/88));
+  const next=key==='Home'?0:key==='End'?model.events.length-1:Math.max(0,Math.min(model.events.length-1,current+(key==='ArrowUp'?-1:key==='ArrowDown'?1:key==='PageUp'?-page:page)));
+  if(next*88<node.scrollTop)node.scrollTop=next*88;
+  else if(next*88+80>node.scrollTop+node.clientHeight)node.scrollTop=next*88+80-node.clientHeight;
+  columnPositions.set(node.dataset.columnKey,node.scrollTop);updateColumn(node);paintConnections(model.track);
+  node.querySelector(`[data-row="${next}"] button`)?.focus({preventScroll:true});
+}
+function paintAnchors(model){
+  const canvas=model.track.querySelector('.anchor-layer'),ratio=window.devicePixelRatio||1;
+  const pixelWidth=Math.ceil(model.width*ratio),pixelHeight=Math.ceil(model.height*ratio);
+  if(canvas.width!==pixelWidth||canvas.height!==pixelHeight){canvas.width=pixelWidth;canvas.height=pixelHeight;canvas.style.width=model.width+'px';canvas.style.height=model.height+'px';}
+  const context=canvas.getContext('2d');context.setTransform(ratio,0,0,ratio,0,0);context.clearRect(0,0,model.width,model.height);
+  const points=new Map();
+  for(const group of model.groups)for(const event of group.events){
+    const position=eventPosition(event,C.center,C.scale,model.width);
+    if(position.x<0||position.x>model.width)continue;
+    const c=color(event);if(!points.has(c))points.set(c,new Set());points.get(c).add(position.x);
+  }
+  for(const [c,positions] of points){context.fillStyle=c;context.globalAlpha=.65;context.beginPath();for(const x of positions){context.moveTo(x+2.6,model.axis);context.arc(x,model.axis,2.6,0,Math.PI*2);}context.fill();}
+}
+function paintConnections(track){
+  const model=trackModels.get(track);if(!model)return;
+  const {width,axis}=model;let svg=`<line class="axis-line" x1="0" x2="${width}" y1="${axis}" y2="${axis}"/>`;
+  const connect=(event,path)=>{
+    const position=eventPosition(event,C.center,C.scale,width),c=color(event);
+    if(event.end&&position.endX>=0&&position.x<=width){
+      const x1=Math.max(0,position.x),x2=Math.min(width,position.endX);
+      let caps='';for(const x of [position.x,position.endX])if(x>=0&&x<=width)caps+=`M${x},${axis-6}V${axis+6}`;
+      svg+=`<g style="--c:${c}"><rect class="period" x="${x1}" y="${axis-6}" width="${Math.max(1,x2-x1)}" height="12" rx="2"/><path class="period-outline" d="${caps}"/></g>`;
+    }
+    svg+=`<g style="--c:${c}"><path class="connector" d="${path(position.x)}"/><circle class="anchor" data-event-anchor="${esc(event.id)}" cx="${position.x}" cy="${axis}" r="3.5"/></g>`;
+  };
+  for(const single of model.singles)connect(single.event,x=>`M${x},${axis}V${single.top<axis?single.top+88:single.top}`);
+  for(const column of model.columns){
+    for(let i=column.start;i<column.end;i++){
+      const rowTop=column.top+i*88-column.offset;
+      if(rowTop+80<=column.top||rowTop>=column.top+column.height)continue;
+      const y=Math.max(column.top+2,Math.min(column.top+column.height-2,rowTop+40));
+      const rail=column.left+176+(i%3)*2;
+      connect(column.events[i],x=>`M${column.left+162},${y}H${rail}V${axis}H${x}`);
+    }
+  }
+  track.querySelector('.connection-layer').innerHTML=svg;
+}
 function render(){
+  rememberColumns();
+  for(const [track,old] of trackModels)if(!track.isConnected){trackModels.delete(track);for(const column of old.columns)columnModels.delete(column.key);}
   const bounds=allBounds();
   C.lanes.forEach(lane=>{
     const track=document.querySelector(`[data-lane="${CSS.escape(lane.id)}"] .track`);if(!track)return;
     const width=track.clientWidth,height=track.clientHeight,axis=height/2;
     const groups=visibleGroups(lane.events,C.center,C.scale,width);
-    let svg=`<line class="axis-line" x1="0" x2="${width}" y1="${axis}" y2="${axis}"/>`,cards='';
+    const previous=trackModels.get(track);
+    const reusable=previous&&previous.events===lane.events&&previous.scale===C.scale&&previous.width===width&&previous.height===height&&previous.groups.length===groups.length&&groups.every((g,i)=>{const old=previous.groups[i];return g.events.length===old.events.length&&g.events[0].id===old.events[0].id&&g.events.at(-1).id===old.events.at(-1).id;});
+    if(reusable){
+      previous.groups=groups;
+      previous.layouts.forEach((layout,i)=>{const left=groups[i].x-81;layout.node.style.left=left+'px';if(layout.label)layout.label.style.left=left+'px';if(layout.column)layout.column.left=left;});
+      paintAnchors(previous);paintConnections(track);return;
+    }
+    if(previous)for(const column of previous.columns)columnModels.delete(column.key);
+    const model={track,width,height,axis,groups,events:lane.events,scale:C.scale,singles:[],columns:[],layouts:[]};trackModels.set(track,model);
+    let content='';
     groups.forEach((g,i)=>{
-      const event=g.events[0],c=color(event),top=i%2===0?axis-116:axis+30,cardX=Math.max(8,Math.min(width-170,g.x-81));
-      const yEnd=top<axis?top+88:top;
-      if(g.events.length===1 && event.end){const x1=Math.max(0,g.startX),x2=Math.min(width,g.endX);svg+=`<g style="--c:${c}"><rect class="period" x="${x1}" y="${axis-7}" width="${Math.max(3,x2-x1)}" height="14" rx="3"/><path class="period-outline" d="M${x1},${axis-7}V${axis+7}M${x2},${axis-7}V${axis+7}"/></g>`;}
-      svg+=`<g style="--c:${c}"><path class="connector" d="M${g.x},${axis}V${yEnd}"/><circle class="anchor" cx="${g.x}" cy="${axis}" r="4"/></g>`;
-      const attachment=event.attachments?.find(a=>a.image);
-      cards+=g.events.length>1?`<button class="event-card cluster" data-cluster="${i}" data-lane-id="${esc(lane.id)}" style="left:${cardX}px;top:${top}px;--c:${c}"><span class="cluster-count">${g.events.length}</span><strong>events close in time</strong><small>Click to explore this cluster ↗</small></button>`:`<button class="event-card ${attachment?'has-image':''}" data-event="${esc(event.id)}" style="left:${cardX}px;top:${top}px;--c:${c}"><span class="event-date">${esc(dateLabel(event.start))}${event.end?' — '+esc(dateLabel(event.end)):''}</span><strong>${esc(event.title)}</strong><small>${esc(event.place||event.source?.authors||categoryName(event))}${event.attachments?.length?' · ▧':''}</small>${attachment?`<img src="${asset(attachment)}" alt="">`:''}</button>`;
+      // Card columns can reflow on zoom; every date anchor is computed separately.
+      const above=Math.abs(g.key)%2===0,left=g.x-81;
+      if(g.events.length===1){const top=above?axis-116:axis+30;model.singles.push({event:g.events[0],top});model.layouts.push({id:g.events[0].id});content+=cardMarkup(g.events[0],left,top);return;}
+      const top=above?12:axis+28,columnHeight=Math.max(88,above?axis-40:height-top-8);
+      const key=lane.id+':'+g.events[0].id;
+      const column={key,events:g.events,top,left,height:columnHeight,track,offset:0,start:0,end:0};model.columns.push(column);columnModels.set(key,column);
+      model.layouts.push({column});
+      content+=`<div class="column-count" style="left:${left}px;top:${Math.max(0,top-13)}px">${g.events.length.toLocaleString()} events</div><div class="event-column" data-column-key="${esc(key)}" role="list" tabindex="0" aria-label="${g.events.length} individual events, in date order. Scroll vertically to browse; Shift-scroll travels through time." style="left:${left}px;top:${top}px;height:${columnHeight}px"><div class="column-spacer" style="height:${g.events.length*88}px"></div></div>`;
     });
-    track.innerHTML=`<svg width="${width}" height="${height}" aria-hidden="true">${svg}</svg>${cards}${!groups.length?`<div class="lane-empty">${lane.events.some(e=>e.start)?'No events here. Keep travelling, or fit the view.':lane.events.length?'These records have no date yet. Open the undated list.':'No events match this view.'}</div>`:''}`;
+    track.innerHTML=`<canvas class="anchor-layer" aria-hidden="true"></canvas><svg class="connection-layer" width="${width}" height="${height}" aria-hidden="true"></svg>${content}${!groups.length?`<div class="lane-empty">${lane.events.some(e=>e.start)?'No events here. Keep travelling, or fit the view.':lane.events.length?'These records have no date yet. Open the undated list.':'No events match this view.'}</div>`:''}`;
+    for(const node of track.querySelectorAll('.event-column')){
+      const column=columnModels.get(node.dataset.columnKey);
+      node.scrollTop=columnPositions.get(column.key)||0;updateColumn(node);
+      node.addEventListener('scroll',()=>{if(!node.isConnected)return;columnPositions.set(column.key,node.scrollTop);updateColumn(node);paintConnections(track);},{passive:true});
+      node.addEventListener('keydown',event=>columnKeydown(event,node));
+    }
+    for(const layout of model.layouts){
+      if(layout.column){layout.node=track.querySelector(`[data-column-key="${CSS.escape(layout.column.key)}"]`);layout.label=layout.node.previousElementSibling;}
+      else layout.node=track.querySelector(`[data-event="${CSS.escape(layout.id)}"]`);
+    }
+    paintAnchors(model);paintConnections(track);
   });
   const width=$('.track')?.clientWidth||1100;
   const canvasHeight=$('#timeline-canvas').clientHeight;
@@ -155,7 +253,7 @@ function pinFilter(){panel('PIN A VIEW',`<h3>A thread through the landscape.</h3
 function categoriesPanel(){panel('CATEGORIES & COLORS',`<h3>A palette of connections.</h3><p>Choose your own names and colors. Changing a category color updates its connecting lines.</p><div id="category-editor">${C.settings.categories.map(c=>`<div class="category-edit" data-id="${esc(c.id)}"><input type="color" value="${esc(c.color)}" aria-label="Category color"><input type="text" value="${esc(c.name)}" aria-label="Category name"><button data-delete-category="${esc(c.id)}" aria-label="Delete category">×</button></div>`).join('')}</div><button id="add-category">＋ Category</button><button id="save-categories" class="primary">Apply palette</button><p>Deleting a category keeps its events and their individual colors.</p>`);}
 function libraryPanel(){panel('LITERATURE BOX',`<h3>Your reading, in time.</h3><p>${esc(C.syncStatus.message)}</p><div class="settings-row"><p>Read-only sync checks for changes every 20 seconds while What Remained is open. Publication years remain year-level dates. Every field on a paper card is searchable. Your own notes and attachments are kept separately.</p><code>${esc(C.settings.sourcePath||'No library selected')}</code></div><button id="choose-library">Choose library…</button><button id="sync-now">Sync now</button><button id="toggle-sync">${C.settings.sync?'Pause':'Resume'} sync</button><p>Removed source cards are retained with a source-unavailable label. Hidden papers stay hidden. Source images are shown when opening a paper; attachments you add here are saved locally.</p>`);}
 function settingsPanel(){panel('YOUR NOTEBOOK',`<h3>Notebook settings</h3><div class="settings-row"><label>Scroll speed <select id="scroll-speed">${[[1,'Gentle'],[2,'Standard'],[4,'Fast'],[8,'Very fast']].map(([value,name])=>`<option value="${value}" ${Number(C.settings.scrollSpeed||4)===value?'selected':''}>${name}</option>`).join('')}</select></label><p>Larger movements accelerate. Hold Shift for a 3× speed boost. Ctrl + scroll zooms.</p></div><div class="settings-row"><button id="export-backup">Export portable backup</button><button id="import-backup">Import & merge backup…</button><p>Portable backups include your events, categories, pinned views, and attached files. Imports merge by event ID; matching IDs are updated. Your automatic database backup is in the Backups folder.</p></div><div class="settings-row"><button id="open-folder">Open notebook folder</button><p><code>${esc(C.root)}</code></p><button id="settings-categories">Categories & colors</button><button id="settings-library">Literature Box connection</button></div><div class="settings-row"><button id="restore-papers">Restore hidden papers</button><p>No accounts, telemetry, or cloud services. Files stay on this computer.</p></div>`);}
-function helpPanel(){panel('A SMALL FIELD GUIDE',`<h3>Make room for time.</h3><p><b>Travel.</b> Scroll or drag a timeline. The bottom slider travels across your whole collection. All pinned views move together. Use Ctrl + scroll, the + / − buttons, or the keyboard to zoom.</p><p><b>Record.</b> Add a point in time or give it an end date. Hover a period for its magnified lens. Attach pictures, PDFs, or other files; add captions and any custom fields you need. Double-click empty timeline space to add an event there.</p><p><b>Connect.</b> Search matches words across every field, source metadata, captions, and filenames. Multiple words must all appear. Categories are combined with OR; other filters are combined with AND. Date filters include periods that overlap the chosen range.</p><p><b>Compare.</b> Pin a filter to create a separate timeline; repeat to compare several threads. Each pin remembers the filter. Use the current search view for exploring without changing pins.</p><p><b>Read density.</b> Nearby events gather into numbered clusters. Open a cluster to browse every event, or zoom closer. Nothing is dropped from a dense view.</p><p><b>Keep.</b> Event changes save in the background after a short pause and before you close the app. Export a portable backup to move the notebook, including its files. A database backup is also refreshed after edits.</p><p><b>Shortcuts.</b> / focuses search · N adds an event · arrows pan a focused timeline · + / − zoom · Esc closes dialogs.</p>`);}
+function helpPanel(){panel('A SMALL FIELD GUIDE',`<h3>Make room for time.</h3><p><b>Travel.</b> Scroll or drag a timeline. The bottom slider travels across your whole collection. All pinned views move together. Use Ctrl + scroll, the + / − buttons, or the keyboard to zoom.</p><p><b>Record.</b> Add a point in time or give it an end date. Hover a period for its magnified lens. Attach pictures, PDFs, or other files; add captions and any custom fields you need. Double-click empty timeline space to add an event there.</p><p><b>Connect.</b> Search matches words across every field, source metadata, captions, and filenames. Multiple words must all appear. Categories are combined with OR; other filters are combined with AND. Date filters include periods that overlap the chosen range.</p><p><b>Compare.</b> Pin a filter to create a separate timeline; repeat to compare several threads. Each pin remembers the filter. Use the current search view for exploring without changing pins.</p><p><b>Read density.</b> Nearby events stay as individual cards in chronological columns. Scroll a long column vertically to browse every event; hold Shift to travel horizontally. Each event keeps its own exact date point. Year-only events anchor to 1 January.</p><p><b>Keep.</b> Event changes save in the background after a short pause and before you close the app. Export a portable backup to move the notebook, including its files. A database backup is also refreshed after edits.</p><p><b>Shortcuts.</b> / focuses search · N adds an event · arrows pan a focused timeline · + / − zoom · Esc closes dialogs.</p>`);}
 function makeDraft(time){const d=new Date(time??Date.now());return {id:uid(),title:'',start:d.toISOString().slice(0,10),end:'',category:C.settings.categories[0]?.id||'',color:C.settings.categories[0]?.color||'#5d7965',place:'',species:'',tags:'',text:'',notes:'',extraFields:{},attachments:[]};}
 function openEditor(event,time){
   hideLens();activeDraft=structuredClone(event||makeDraft(time));draftDirty=false;
@@ -212,7 +310,6 @@ async function examples(){
 document.addEventListener('click',async event=>{try{
   const b=event.target.closest('button');if(!b)return;
   if(b.dataset.event){await closePanel();openEditor(C.events.find(e=>e.id===b.dataset.event));return;}
-  if(b.dataset.cluster!==undefined){const lane=C.lanes.find(l=>l.id===b.dataset.laneId);const track=b.closest('.track');const groups=visibleGroups(lane.events,C.center,C.scale,track.clientWidth);listEvents('Close in time',groups[Number(b.dataset.cluster)].events);return;}
   if(b.dataset.openListed){$('#panel').close();openEditor(C.events.find(e=>e.id===b.dataset.openListed));return;}
   if(b.dataset.categoryFilter){const id=b.dataset.categoryFilter;C.filter.categories=C.filter.categories.includes(id)?C.filter.categories.filter(c=>c!==id):[...C.filter.categories,id];filterChanged();return;}
   if(b.hasAttribute('data-hide-current')){C.showCurrent=false;rebuild();return;}

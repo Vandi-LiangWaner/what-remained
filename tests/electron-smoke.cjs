@@ -40,6 +40,7 @@ module.exports=async({win,request,root})=>{
   assert.ok(perf.cards>0 && perf.cards<100,'virtualized renderer draws a bounded, nonempty view');
   assert.equal(await js('document.title'),'What Remained');
   assert.ok(await js(`getComputedStyle(document.querySelector('.brand h1')).fontFamily.includes('Palatino')`));
+  await require('./columns-check.cjs')({win,preview});
   console.log('ELECTRON_SMOKE_OK',JSON.stringify(perf));
   console.log('PREVIEW_DIRECTORY',preview);
 };

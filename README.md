@@ -12,6 +12,10 @@ Run the installer to create Start menu and desktop shortcuts, or extract the por
 
 ![What Remained: events and pinned filters on one shared timeline canvas](docs/timeline.png)
 
+## Development preview: 1.2.0
+
+The local 1.2.0 preview replaces collapsed groups with individually readable, scrollable event columns. Every event retains its own exact date point; year-only events anchor to 1 January. Panning does not regroup columns or pin dates to the viewport edges. The download links above remain the published 1.1.0 release until this visual update is approved for publication.
+
 Your notebook lives in **Documents/Reminiscence**, independently of the application folder. The SQLite database is `reminiscence.sqlite`; managed files live in `Attachments`. An automatic database backup is refreshed after edits in `Backups`. Use **Notebook settings → Export portable backup** to include attachments in a portable JSON backup. Import merges event IDs and updates matching records. To remove the application, right-click `Uninstall.ps1` in its installation folder and run it with PowerShell; notebook data is retained.
 
 The app was previously named Reminiscence. Its existing notebook directory, database filenames, and backup format identifier are deliberately retained so the rename opens the same data and remains compatible with older backups. The visible app name, executable, installer, and shortcuts are now What Remained.
@@ -29,7 +33,7 @@ Travel defaults to Fast (4× wheel distance), accelerates larger gestures, and a
 - Hover a period to see an enlarged period lens; open it and choose **Fit period** to inspect its interval in the timeline.
 - Search across event fields, custom fields, filenames, captions, category names, and all synced paper metadata. Search ignores case and accents. Multiple words use AND; selected categories use OR. Other filters use AND; date filters include overlapping periods.
 - Pin any filter under a name to create an additional timeline. Pins retain their own filters and automatically include future matching events. All timelines share one zoom and time position. Hide the search lane when comparing pins.
-- Dense views group events into clickable clusters. Click to browse every member or zoom closer. Only visible clusters are drawn; records are never dropped to reduce rendering load.
+- Dense views list nearby events individually in chronological columns. Scroll a column vertically to browse every event, or hold Shift to travel horizontally. Long columns draw only the rows currently in view and nearby rows, while keeping every event reachable. Each event retains its own exact date point, including when panning or zooming; year-only events anchor to 1 January.
 - Changes save in the background after a brief pause and are flushed before normal app closure. Invalid drafts remain open with an error. An empty new event is discarded on close.
 
 ## Literature Box

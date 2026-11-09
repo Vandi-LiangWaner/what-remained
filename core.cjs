@@ -40,8 +40,8 @@ function paperEvent(card, sourcePath) {
     text: plain(card.findings || card.notes || ''), notes: '', place: '', species: '', tags: [...new Set([...(card.topics || []), ...(card.keywords || []), ...(card.projects || [])])].join(', '),
     fields, attachments: [], sourceImages: card.images || [], source: {id: card.id, path: sourcePath, authors: card.authors || '', journal: card.journal || '', doi: card.doi || '', link: card.link || '', year}};
 }
-// Assign nearby anchors to bins before layout: at most one card per 170px cell.
-// Every event remains accessible through its cluster, even at continental time scales.
+// Nearby dates share a column; its members remain individual events.
+// Dates stay chronological even when a library/import is not stored in date order.
 function visibleGroups(events, center, scale, width) {
   const buckets = new Map();
   for (const event of events) {
@@ -50,14 +50,36 @@ function visibleGroups(events, center, scale, width) {
     const x = (start - center) / scale + width / 2;
     const right = (end - center) / scale + width / 2;
     if (right < -220 || x > width + 220) continue;
-    const anchor = Math.max(95, Math.min(width - 95, x));
-    const key = Math.floor(anchor / 180);
-    if (!buckets.has(key)) buckets.set(key, {x: anchor, startX: x, endX: right, events: []});
+    // Time-based bins do not change membership just because the viewport pans.
+    // Never clamp a real date to a viewport edge.
+    const key = Math.floor(start / (scale*180));
+    if (!buckets.has(key)) buckets.set(key, {key, x, startX: x, endX: right, events: [], ordered:true, latest:-Infinity});
+    const bucket=buckets.get(key);
+    if(start<bucket.latest)bucket.ordered=false;
+    bucket.latest=start;
     buckets.get(key).events.push(event);
   }
-  return [...buckets.values()].sort((a,b) => a.x - b.x);
+  const groups=[...buckets.values()].sort((a,b) => a.x - b.x);
+  for(const group of groups){
+    if(!group.ordered)group.events.sort((a,b)=>eventTimes(a).a-eventTimes(b).a);
+    const {a,b}=eventTimes(group.events[0]);
+    group.x=group.startX=(a-center)/scale+width/2;
+    group.endX=((b??a)-center)/scale+width/2;
+  }
+  groups.sort((a,b)=>a.x-b.x);
+  return groups;
 }
-const api = {DAY, parseDate, eventTimes, plain, indexEvent, matches, validateEvent, paperEvent, visibleGroups};
+// Bound the DOM work, not the event list: every row can be reached by scrolling.
+function columnWindow(count, scrollTop, height, pitch=88, overscan=2){
+  const offset=Math.max(0,Math.min(Math.max(0,count*pitch-height),scrollTop));
+  return {offset,start:Math.max(0,Math.floor(offset/pitch)-overscan),end:Math.min(count,Math.ceil((offset+height)/pitch)+overscan),totalHeight:count*pitch};
+}
+function eventPosition(event,center,scale,width){
+  const {a,b}=eventTimes(event);
+  if(a===null)return null;
+  return {x:(a-center)/scale+width/2,endX:((b??a)-center)/scale+width/2};
+}
+const api = {DAY, parseDate, eventTimes, plain, indexEvent, matches, validateEvent, paperEvent, visibleGroups, columnWindow, eventPosition};
 if (typeof module !== 'undefined') module.exports = api;
 else window.FieldCore = api;
 })();

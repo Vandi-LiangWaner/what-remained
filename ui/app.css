@@ -69,6 +69,7 @@ textarea{resize:vertical;line-height:1.6;font-family:var(--serif);font-size:15px
 #lanes:has(.lane:nth-child(2)) .track{height:clamp(256px,calc((100vh - 300px)/var(--lane-count) - 35px),390px)}
 .track.dragging{cursor:grabbing}
 .track>svg{position:absolute;inset:0;pointer-events:none}
+.anchor-layer{position:absolute;inset:0;pointer-events:none}
 .axis-line{stroke:#c5cec7;stroke-width:1}
 .tick-line{stroke:#e9edea;stroke-width:1}
 .tick-text{fill:#8f9992;font:10px 'Segoe UI',sans-serif}
@@ -79,10 +80,15 @@ textarea{resize:vertical;line-height:1.6;font-family:var(--serif);font-size:15px
 .event-card small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#98a098;font-size:9px;margin-top:5px}
 .event-card.has-image{padding-right:46px}
 .event-card img{position:absolute;right:7px;bottom:10px;width:31px;height:38px;object-fit:cover;border-radius:3px}
-.cluster{background:#f3f6f4;border-color:#e1e8e2}
-.cluster .cluster-count{font-size:21px;line-height:1;color:var(--c);float:left;margin:2px 9px 0 0;font-weight:300}
-.cluster strong{font-family:inherit;font-size:11px;line-height:1.45;margin-top:1px}
-.cluster small{clear:both;padding-top:8px}
+.event-column{position:absolute;width:174px;padding-right:6px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c5cec7 transparent;cursor:default;scrollbar-gutter:stable}
+.event-column::-webkit-scrollbar{width:6px}.event-column::-webkit-scrollbar-thumb{background:#c5cec7;border-radius:4px}.event-column::-webkit-scrollbar-track{background:transparent}
+.column-spacer{position:relative;width:162px}
+.event-row{position:absolute;left:0;width:162px;height:80px}
+.event-column .event-card{height:80px;padding:8px 10px;box-shadow:none}
+.event-column .event-card strong{font-size:14px;line-height:1.15}
+.event-column .event-card small{margin-top:4px}
+.event-column .event-card:hover{transform:none}
+.column-count{position:absolute;color:#929c94;font-size:9px;pointer-events:none;line-height:12px}
 .period{fill:var(--c);opacity:.12}.period-outline{stroke:var(--c);stroke-width:1.5;fill:none}
 .connector{stroke:var(--c);stroke-width:1;fill:none;opacity:.75}.anchor{fill:var(--c);stroke:var(--paper);stroke-width:2}
 .lane-bottom{height:29px;display:flex;align-items:center;gap:14px;color:#a2aaa4;font-size:9px;padding:0 2px}
