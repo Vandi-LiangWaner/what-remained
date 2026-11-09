@@ -19,6 +19,8 @@ module.exports=async({win,preview})=>{
   await settle();
   assert.equal(await js(`document.activeElement.dataset.event`),'column-2020-195','last event reachable by keyboard');
   await js(`document.activeElement.click()`);await settle();
+  assert.equal(await js(`document.querySelector('#card-front').hidden`),false,'timeline opens the front first');
+  await js(`document.querySelector('#flip-to-back').click()`);
   assert.equal(await js(`document.querySelector('#event-title').value`),'Community observation 196','individual event opens its normal editor');
   await js(`document.querySelector('#close-editor').click()`);await settle();
   const anchors=await js(`(()=>{const R=Reminiscence,e=R.state.events.find(e=>e.id==='column-2020-195');const before=Number(document.querySelector('[data-event-anchor="'+e.id+'"]').getAttribute('cx'));R.state.center+=86400000*100;R.render();const after=Number(document.querySelector('[data-event-anchor="'+e.id+'"]').getAttribute('cx'));const expected=FieldCore.eventPosition(e,R.state.center,R.state.scale,document.querySelector('.track').clientWidth).x;R.state.scale/=2;R.render();const zoomed=Number(document.querySelector('[data-event-anchor="'+e.id+'"]').getAttribute('cx'));const zoomExpected=FieldCore.eventPosition(e,R.state.center,R.state.scale,document.querySelector('.track').clientWidth).x;return {before,after,expected,zoomed,zoomExpected}})()`);

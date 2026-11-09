@@ -79,7 +79,28 @@ function eventPosition(event,center,scale,width){
   if(a===null)return null;
   return {x:(a-center)/scale+width/2,endX:((b??a)-center)/scale+width/2};
 }
-const api = {DAY, parseDate, eventTimes, plain, indexEvent, matches, validateEvent, paperEvent, visibleGroups, columnWindow, eventPosition};
+function createRowLayout(events,heightForEvent){
+  const heights=new Float64Array(events.length),offsets=new Float64Array(events.length+1);
+  events.forEach((event,i)=>{heights[i]=Math.max(1,heightForEvent(event));offsets[i+1]=offsets[i]+heights[i];});
+  return {heights,offsets};
+}
+function rowAt(layout,position){
+  let lo=0,hi=layout.heights.length;
+  while(lo<hi){const mid=(lo+hi)>>>1;if(layout.offsets[mid+1]<=position)lo=mid+1;else hi=mid;}
+  return Math.max(0,Math.min(layout.heights.length-1,lo));
+}
+function rowWindow(layout,scrollTop,height,overscan=2){
+  const count=layout.heights.length,totalHeight=layout.offsets[count];
+  const offset=Math.max(0,Math.min(Math.max(0,totalHeight-height),scrollTop));
+  return {offset,start:count?Math.max(0,rowAt(layout,offset)-overscan):0,end:count?Math.min(count,rowAt(layout,offset+height)+1+overscan):0,totalHeight};
+}
+function updateRowHeights(layout,changes){
+  let first=layout.heights.length;
+  for(const [index,height] of changes)if(layout.heights[index]!==height){layout.heights[index]=height;first=Math.min(first,index);}
+  for(let i=first;i<layout.heights.length;i++)layout.offsets[i+1]=layout.offsets[i]+layout.heights[i];
+  return first<layout.heights.length;
+}
+const api = {DAY, parseDate, eventTimes, plain, indexEvent, matches, validateEvent, paperEvent, visibleGroups, columnWindow, eventPosition,createRowLayout,rowAt,rowWindow,updateRowHeights};
 if (typeof module !== 'undefined') module.exports = api;
 else window.FieldCore = api;
 })();

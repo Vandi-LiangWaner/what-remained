@@ -44,7 +44,7 @@ app.whenReady().then(async()=>{
     if(method==='openLink') {if(!safeLink(payload))throw Error('Use an http, https, or mailto link.');await shell.openExternal(payload);return true;}
     if(method==='openFolder') {await shell.openPath(root);return true;}
     if(method==='chooseLibrary') {
-      const result=await dialog.showOpenDialog(win,{title:'Connect Literature Box',properties:['openFile'],filters:[{name:'Literature Box database',extensions:['sqlite','db']}]});
+      const result=await dialog.showOpenDialog(win,{title:'Connect Scrinium',properties:['openFile'],filters:[{name:'Scrinium database',extensions:['sqlite','db']}]});
       if(result.canceled)return null;
       await request('settings',{sourcePath:result.filePaths[0],sync:true});return request('sync');
     }

@@ -1,16 +1,20 @@
 # What Remained
 
-A private ecological notebook across time. A modern, minimalist Windows desktop app with Palatino headings and event content, with local SQLite storage and a read-only connection to Literature Box.
+A private ecological notebook across time. A modern, minimalist Windows desktop app with Palatino headings and event content, with local SQLite storage and a read-only connection to Scrinium.
 
 **Vibe coding project:** developed iteratively with Codex.
 
 ## Download for Windows
 
-[Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.2.0/What-Remained-1.2.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.2.0/What-Remained-1.2.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
+[Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.3.0/What-Remained-1.3.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.3.0/What-Remained-1.3.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
 
 Run the installer to create Start menu and desktop shortcuts, or extract the portable ZIP and open `What Remained.exe`. The installer does not require administrator rights. This initial release is unsigned.
 
 ![What Remained: events and pinned filters on one shared timeline canvas](docs/timeline.png)
+
+## New in 1.3.0
+
+Version 1.3.0 displays complete titles in rows that grow to fit their text. Clicking an event or synced paper opens a card front first; **Edit notes & fields** opens the editing side and **Card front** returns to the front. Synced paper fronts use What Remained’s minimalist card style while showing Scrinium bibliographic details, findings, tags, projects, and figure thumbnails. The back edits only your What Remained notes, place, species, custom fields, category/color, and local attachments; original Scrinium metadata stays read-only. Expand the front to read additional source details and your timeline notes. All connection labels now use the name Scrinium, while the legacy library path is retained for compatibility.
 
 ## New in 1.2.0
 
@@ -36,13 +40,13 @@ Travel defaults to Fast (4× wheel distance), accelerates larger gestures, and a
 - Dense views list nearby events individually in chronological columns. Scroll a column vertically to browse every event, or hold Shift to travel horizontally. Long columns draw only the rows currently in view and nearby rows, while keeping every event reachable. Each event retains its own exact date point, including when panning or zooming; year-only events anchor to 1 January.
 - Changes save in the background after a brief pause and are flushed before normal app closure. Invalid drafts remain open with an error. An empty new event is discarded on close.
 
-## Literature Box
+## Scrinium
 
-The app looks for **Documents/Literature Box Library/literature-box.sqlite**, matching the current LitBox configuration in this workspace. Choose another SQLite library from the Literature Box panel if needed. Classic and Stacks currently point to that same library; you can select a different library explicitly.
+The app looks for **Documents/Literature Box Library/literature-box.sqlite**, matching the current Scrinium configuration in this workspace. Choose another SQLite library from the Scrinium panel if needed. Classic and Stacks currently point to that same library; you can select a different library explicitly.
 
-While open, What Remained checks the source every 20 seconds, reads it in SQLite read-only mode, and updates its own paper copies when the source revision changes. It never writes to Literature Box. Papers appear at publication dates; a year-only date remains year-level. Invalid or missing publication dates go into the undated list. Source fields are read-only here; add your own notes, custom fields, attachments, and category/color assignments separately. Paper figures are copied to local managed files. Papers removed from the source are retained with a source-unavailable label. Hiding a paper only hides its timeline copy, and hidden papers can be restored in settings. Only one source library is connected at a time; switching libraries treats matching LitBox card IDs as the same paper.
+While open, What Remained checks the source every 20 seconds, reads it in SQLite read-only mode, and updates its own paper copies when the source revision changes. It never writes to Scrinium. Papers appear at publication dates; a year-only date remains year-level. Invalid or missing publication dates go into the undated list. Source fields are read-only here; add your own notes, custom fields, attachments, and category/color assignments separately. Paper figures are copied to local managed files. Papers removed from the source are retained with a source-unavailable label. Hiding a paper only hides its timeline copy, and hidden papers can be restored in settings. Only one source library is connected at a time; switching libraries treats matching Scrinium card IDs as the same paper.
 
-Sync happens only while this app is open. Standalone source synchronization uses the `app_state.cards_json` and `revision` format of this LitBox version.
+Sync happens only while this app is open. Standalone source synchronization uses the `app_state.cards_json` and `revision` format of this Scrinium version.
 
 ## Development
 

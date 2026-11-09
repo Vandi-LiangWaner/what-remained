@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {parseDate,validateEvent,matches,indexEvent,paperEvent,visibleGroups,columnWindow,eventPosition,DAY}=require('../core.cjs');
+const {parseDate,validateEvent,matches,indexEvent,paperEvent,visibleGroups,columnWindow,eventPosition,createRowLayout,rowAt,rowWindow,updateRowHeights,DAY}=require('../core.cjs');
 test('partial dates and impossible dates preserve calendar meaning',()=>{
   assert.equal(parseDate('2024'),Date.UTC(2024,0,1));assert.equal(parseDate('2024-02-29'),Date.UTC(2024,1,29));
   for(const invalid of ['2023-02-29','2024-13','2024-04-31','yesterday',''])assert.equal(parseDate(invalid),null);
@@ -44,4 +44,14 @@ test('each anchor keeps its exact date through panning, zooming, grouping, and v
   assert.equal(eventPosition(yearOnly,parseDate('2026-01-01'),DAY,1000).x,-231,'offscreen dates are not clamped to an edge');
   const events=[yearOnly,jan1,jan2];const a=visibleGroups(events,parseDate('2024-01-01'),DAY,1000),b=visibleGroups(events,parseDate('2024-01-11'),DAY,1000);
   assert.deepEqual(a.map(g=>g.events.map(e=>e.id)),b.map(g=>g.events.map(e=>e.id)),'panning does not repack date columns');
+});
+test('variable-height rows preserve ordering and keep the last long title reachable',()=>{
+  const rows=createRowLayout([{height:88},{height:320},{height:148}],e=>e.height);
+  assert.deepEqual([...rows.offsets],[0,88,408,556]);assert.equal(rowAt(rows,300),1);
+  assert.equal(rowWindow(rows,Infinity,160).end,3);
+  updateRowHeights(rows,[[0,180],[2,250]]);
+  assert.deepEqual([...rows.offsets],[0,180,500,750]);assert.equal(rowAt(rows,499),1);assert.equal(rowAt(rows,500),2);
+  assert.equal(rowWindow(rows,Infinity,160).offset,590);assert.equal(rowWindow(rows,Infinity,160).end,3);
+  const dense=createRowLayout(Array.from({length:20000},(_,i)=>i),i=>88+(i%7)*20);
+  const window=rowWindow(dense,Infinity,240);assert.equal(window.end,20000);assert.ok(window.end-window.start<10);
 });

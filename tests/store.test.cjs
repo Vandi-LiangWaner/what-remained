@@ -9,9 +9,12 @@ test('real SQLite sync is read-only, incremental, durable, and preserves annotat
   const request=(method,payload)=>new Promise((resolve,reject)=>{const id=++seq;waiting.set(id,{resolve,reject});worker.postMessage({id,method,payload});});
   try{
     let state=await request('load');assert.equal(state.events.length,2);assert.equal(state.events.find(e=>e.id==='paper:2').start,'');
-    const paper=state.events.find(e=>e.id==='paper:1');paper.notes='My annotation';paper.extraFields={ecology:'wetlands'};await request('save',paper);
+    const sourceBefore=source.prepare('SELECT cards_json FROM app_state').get().cards_json;
+    const paper=state.events.find(e=>e.id==='paper:1');paper.notes='My annotation';paper.place='Wetland transect';paper.species='Shorebirds';paper.extraFields={ecology:'wetlands'};await request('save',paper);
+    assert.equal(source.prepare('SELECT cards_json FROM app_state').get().cards_json,sourceBefore,'editing timeline notes and fields never writes the source library');
     write([{id:1,title:'Changed in LitBox',year:'2002',notes:'New source'}],2);state=await request('sync');
     const updated=state.events.find(e=>e.id==='paper:1');assert.equal(updated.title,'Changed in LitBox');assert.equal(updated.notes,'My annotation');assert.equal(updated.extraFields.ecology,'wetlands');assert.equal(updated.start,'2002');
+    assert.equal(updated.place,'Wetland transect');assert.equal(updated.species,'Shorebirds');
     paper.notes='Annotation from an older open editor';const staleSave=await request('save',paper);assert.equal(staleSave.title,'Changed in LitBox');assert.equal(staleSave.start,'2002');assert.equal(staleSave.notes,'Annotation from an older open editor');
     assert.ok(state.events.find(e=>e.id==='paper:2').sourceMissing);assert.equal(source.prepare('SELECT revision FROM app_state').get().revision,2);
     await request('remove','paper:1');state=await request('sync');assert.ok(state.events.find(e=>e.id==='paper:1').hidden);

@@ -9,7 +9,7 @@ const db = new DatabaseSync(path.join(root,'reminiscence.sqlite'));
 db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=4000; CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY, body TEXT NOT NULL);");
 const defaults = {categories:[{id:'observation',name:'Observation',color:'#5d7965'},{id:'climate',name:'Climate',color:'#b77c54'},{id:'conservation',name:'Conservation',color:'#5b8596'},{id:'papers',name:'Literature',color:'#8b7597'}],pins:[],scrollSpeed:4,sync:true,sourcePath:workerData.sourcePath};
 let settings = {...defaults,...JSON.parse(db.prepare('SELECT body FROM settings WHERE id=1').get()?.body || '{}')};
-let syncStatus = {state:'waiting',message:'Looking for Literature Box…'};
+let syncStatus = {state:'waiting',message:'Looking for Scrinium…'};
 const saveSettings = () => db.prepare('INSERT OR REPLACE INTO settings VALUES(1,?)').run(JSON.stringify(settings));
 const put = event => db.prepare('INSERT OR REPLACE INTO events VALUES(?,?)').run(event.id,JSON.stringify(event));
 let backupTimer;
@@ -27,9 +27,9 @@ function backup() {
 }
 let sourceRevision = null;
 function sync() {
-  if (!settings.sync) {syncStatus={state:'paused',message:'Literature Box sync paused'}; return;}
+  if (!settings.sync) {syncStatus={state:'paused',message:'Scrinium sync paused'}; return;}
   const file = settings.sourcePath;
-  if (!file || !fs.existsSync(file)) {syncStatus={state:'missing',message:'Choose your Literature Box database to connect papers'};return;}
+  if (!file || !fs.existsSync(file)) {syncStatus={state:'missing',message:'Choose your Scrinium database to connect papers'};return;}
   let source;
   try {
     source = new DatabaseSync(file,{readOnly:true}); source.exec('PRAGMA busy_timeout=1000');
@@ -38,7 +38,7 @@ function sync() {
     const key = file+':'+row.revision;
     if (sourceRevision === key) {syncStatus.checkedAt=Date.now();return;}
     const state = JSON.parse(row.cards_json);
-    if (!Array.isArray(state.cards)) throw Error('Unrecognized Literature Box library.');
+    if (!Array.isArray(state.cards)) throw Error('Unrecognized Scrinium library.');
     const papers = state.cards.filter(c=> !c.kind || c.kind==='paper');
     const existing = new Map(db.prepare('SELECT id, body FROM events').all().map(r=>[r.id,JSON.parse(r.body)]));
     db.exec('BEGIN');
@@ -55,7 +55,7 @@ function sync() {
           return [{id,name:image.name||'Paper figure',image:true,caption:image.caption||'',source:true}];
         });
         delete fresh.sourceImages;
-        put(old ? {...fresh,notes:old.notes || '',attachments:old.attachments || [],extraFields:old.extraFields || {},category:old.category,color:old.color,hidden:old.hidden || false} : fresh);
+        put(old ? {...fresh,notes:old.notes || '',place:old.place || '',species:old.species || '',attachments:old.attachments || [],extraFields:old.extraFields || {},category:old.category,color:old.color,hidden:old.hidden || false} : fresh);
       }
       const ids = new Set(papers.map(c=>`paper:${c.id}`));
       for (const old of existing.values()) if (old.source && !ids.has(old.id)) put({...old,sourceMissing:true});
@@ -73,9 +73,9 @@ const methods = {
     validateEvent(event);
     const row=db.prepare('SELECT body FROM events WHERE id=?').get(event.id);
     const current=row?JSON.parse(row.body):null;
-    // A paper can change in LitBox while its annotation editor is open.
+    // A paper can change in Scrinium while its annotation editor is open.
     // Only apply the locally editable fields from that editor's snapshot.
-    if(current?.source)event={...current,notes:event.notes,extraFields:event.extraFields,attachments:event.attachments,category:event.category,color:event.color,hidden:event.hidden||false};
+    if(current?.source)event={...current,notes:event.notes,place:event.place,species:event.species,extraFields:event.extraFields,attachments:event.attachments,category:event.category,color:event.color,hidden:event.hidden||false};
     put(event);backup();return event;
   },
   remove(id) {const row=db.prepare('SELECT body FROM events WHERE id=?').get(id);if(row && JSON.parse(row.body).source) {put({...JSON.parse(row.body),hidden:true});} else db.prepare('DELETE FROM events WHERE id=?').run(id);backup();return true;},

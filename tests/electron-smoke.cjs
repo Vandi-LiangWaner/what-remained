@@ -41,6 +41,7 @@ module.exports=async({win,request,root})=>{
   assert.equal(await js('document.title'),'What Remained');
   assert.ok(await js(`getComputedStyle(document.querySelector('.brand h1')).fontFamily.includes('Palatino')`));
   await require('./columns-check.cjs')({win,preview});
+  await require('./front-check.cjs')({win,request,root,preview});
   console.log('ELECTRON_SMOKE_OK',JSON.stringify(perf));
   console.log('PREVIEW_DIRECTORY',preview);
 };

@@ -1,5 +1,5 @@
 /* Reminiscence — no framework, no network, only the visible landscape is drawn. */
-const {DAY,parseDate,eventTimes,plain,indexEvent,matches,validateEvent,visibleGroups,columnWindow,eventPosition}=window.FieldCore;
+const {DAY,parseDate,eventTimes,plain,indexEvent,matches,validateEvent,visibleGroups,eventPosition,createRowLayout,rowAt,rowWindow,updateRowHeights}=window.FieldCore;
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
@@ -12,6 +12,8 @@ const categoryName=e=>C.settings.categories.find(c=>c.id===e.category)?.name||'U
 const asset=a=>`field-asset://local/${encodeURIComponent(a.id)}`;
 let toastTimer,filterTimer,viewTimer,frame=0,lensTimer,activeDraft=null,draftTimer,persistPromise=Promise.resolve(),draftDirty=false;
 const columnPositions=new Map(),columnModels=new Map(),trackModels=new Map();
+const measuredRows=new WeakMap();
+function rowHeight(event){return measuredRows.get(event)||Math.max(88,Math.ceil(43+Math.ceil(String(event.title||'').length/(event.attachments?.some(a=>a.image)?15:21))*16.1)+8);}
 function toast(text) {$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,4000);}
 function report(error){console.error(error);toast(error.message||String(error));}
 function accept(data,initial=false){
@@ -23,8 +25,8 @@ function accept(data,initial=false){
 async function load(initial=false){accept(await call('load'),initial);}
 function updateSync(){
   $('#sync-dot').className='dot '+C.syncStatus.state;
-  $('#library-button').title=C.syncStatus.message||'Connect Literature Box';
-  $('#footer-sync').textContent=C.syncStatus.state==='connected'?` · ${C.syncStatus.count} papers from Literature Box`:'';
+  $('#library-button').title=C.syncStatus.message||'Connect Scrinium';
+  $('#footer-sync').textContent=C.syncStatus.state==='connected'?` · ${C.syncStatus.count} papers from Scrinium`:'';
 }
 function filterDescription(f){return [f.query && `“${f.query}”`,f.categories?.map(id=>C.settings.categories.find(c=>c.id===id)?.name).join(', '),f.source!=='all'&&f.source==='papers'?'Literature':f.source==='events'?'My events':'',f.from&&`from ${f.from}`,f.to&&`until ${f.to}`].filter(Boolean).join(' · ')||'All events';}
 function rebuild(){
@@ -121,23 +123,40 @@ function cardMarkup(event,left,top,extra=''){
 }
 function updateColumn(node){
   const model=columnModels.get(node.dataset.columnKey);if(!model)return;
-  const view=columnWindow(model.events.length,node.scrollTop,model.height);
-  model.offset=node.scrollTop;model.start=view.start;model.end=view.end;
-  if(model.drawnStart===view.start&&model.drawnEnd===view.end)return;
-  model.drawnStart=view.start;model.drawnEnd=view.end;
-  let rows='';
-  for(let i=view.start;i<view.end;i++)rows+=`<div class="event-row" role="listitem" aria-posinset="${i+1}" aria-setsize="${model.events.length}" data-row="${i}" style="top:${i*88}px">${cardMarkup(model.events[i],0,0)}</div>`;
-  node.querySelector('.column-spacer').innerHTML=rows;
+  for(let pass=0;pass<4;pass++){
+    const view=rowWindow(model.layout,node.scrollTop,model.height);
+    model.offset=node.scrollTop;model.start=view.start;model.end=view.end;
+    if(model.drawnStart!==view.start||model.drawnEnd!==view.end){
+      model.drawnStart=view.start;model.drawnEnd=view.end;
+      let rows='';
+      for(let i=view.start;i<view.end;i++)rows+=`<div class="event-row" role="listitem" aria-posinset="${i+1}" aria-setsize="${model.events.length}" data-row="${i}" style="top:${model.layout.offsets[i]}px;height:${model.layout.heights[i]-8}px">${cardMarkup(model.events[i],0,0)}</div>`;
+      node.querySelector('.column-spacer').innerHTML=rows;
+    }
+    const changes=[];
+    for(const row of node.querySelectorAll('.event-row')){
+      const i=Number(row.dataset.row),height=Math.ceil(row.querySelector('button').getBoundingClientRect().height)+8;
+      measuredRows.set(model.events[i],height);if(height!==model.layout.heights[i])changes.push([i,height]);
+      if(height-8>model.height){const required=Math.max(Number(model.track.dataset.cardHeight)||0,height-8);model.track.dataset.cardHeight=required;model.track.style.minHeight=(2*(required+40))+'px';}
+    }
+    if(!changes.length)break;
+    const anchor=rowAt(model.layout,node.scrollTop),within=node.scrollTop-model.layout.offsets[anchor],atEnd=node.scrollTop+model.height>=view.totalHeight-1;
+    updateRowHeights(model.layout,changes);
+    node.querySelector('.column-spacer').style.height=model.layout.offsets[model.events.length]+'px';
+    node.scrollTop=atEnd?node.scrollHeight: model.layout.offsets[anchor]+within;
+    for(const row of node.querySelectorAll('.event-row')){const i=Number(row.dataset.row);row.style.top=model.layout.offsets[i]+'px';row.style.height=(model.layout.heights[i]-8)+'px';}
+    model.offset=node.scrollTop;
+  }
 }
 function columnKeydown(event,node){
   const model=columnModels.get(node.dataset.columnKey);if(!model)return;
   const key=event.key;if(!['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(key))return;
   event.preventDefault();event.stopPropagation();
-  const current=Number(event.target.closest('[data-row]')?.dataset.row??Math.floor(node.scrollTop/88));
-  const page=Math.max(1,Math.floor(node.clientHeight/88));
+  const current=Number(event.target.closest('[data-row]')?.dataset.row??rowAt(model.layout,node.scrollTop));
+  const page=Math.max(1,rowAt(model.layout,node.scrollTop+node.clientHeight)-rowAt(model.layout,node.scrollTop));
   const next=key==='Home'?0:key==='End'?model.events.length-1:Math.max(0,Math.min(model.events.length-1,current+(key==='ArrowUp'?-1:key==='ArrowDown'?1:key==='PageUp'?-page:page)));
-  if(next*88<node.scrollTop)node.scrollTop=next*88;
-  else if(next*88+80>node.scrollTop+node.clientHeight)node.scrollTop=next*88+80-node.clientHeight;
+  const top=model.layout.offsets[next],bottom=model.layout.offsets[next+1]-8;
+  if(top<node.scrollTop||bottom-top>node.clientHeight)node.scrollTop=top;
+  else if(bottom>node.scrollTop+node.clientHeight)node.scrollTop=bottom-node.clientHeight;
   columnPositions.set(node.dataset.columnKey,node.scrollTop);updateColumn(node);paintConnections(model.track);
   node.querySelector(`[data-row="${next}"] button`)?.focus({preventScroll:true});
 }
@@ -169,9 +188,9 @@ function paintConnections(track){
   for(const single of model.singles)connect(single.event,x=>`M${x},${axis}V${single.top<axis?single.top+88:single.top}`);
   for(const column of model.columns){
     for(let i=column.start;i<column.end;i++){
-      const rowTop=column.top+i*88-column.offset;
-      if(rowTop+80<=column.top||rowTop>=column.top+column.height)continue;
-      const y=Math.max(column.top+2,Math.min(column.top+column.height-2,rowTop+40));
+      const rowTop=column.top+column.layout.offsets[i]-column.offset,rowHeight=column.layout.heights[i]-8;
+      if(rowTop+rowHeight<=column.top||rowTop>=column.top+column.height)continue;
+      const y=Math.max(column.top+2,Math.min(column.top+column.height-2,rowTop+rowHeight/2));
       const rail=column.left+176+(i%3)*2;
       connect(column.events[i],x=>`M${column.left+162},${y}H${rail}V${axis}H${x}`);
     }
@@ -184,8 +203,12 @@ function render(){
   const bounds=allBounds();
   C.lanes.forEach(lane=>{
     const track=document.querySelector(`[data-lane="${CSS.escape(lane.id)}"] .track`);if(!track)return;
-    const width=track.clientWidth,height=track.clientHeight,axis=height/2;
+    const width=track.clientWidth;
     const groups=visibleGroups(lane.events,C.center,C.scale,width);
+    let minimum=Number(track.dataset.cardHeight)||80;
+    for(const group of groups)if(group.x>-174&&group.x<width+174)for(const event of group.events.slice(0,3))minimum=Math.max(minimum,rowHeight(event)-8);
+    track.style.minHeight=(2*(minimum+40))+'px';
+    const height=track.clientHeight,axis=height/2;
     const previous=trackModels.get(track);
     const reusable=previous&&previous.events===lane.events&&previous.scale===C.scale&&previous.width===width&&previous.height===height&&previous.groups.length===groups.length&&groups.every((g,i)=>{const old=previous.groups[i];return g.events.length===old.events.length&&g.events[0].id===old.events[0].id&&g.events.at(-1).id===old.events.at(-1).id;});
     if(reusable){
@@ -199,12 +222,12 @@ function render(){
     groups.forEach((g,i)=>{
       // Card columns can reflow on zoom; every date anchor is computed separately.
       const above=Math.abs(g.key)%2===0,left=g.x-81;
-      if(g.events.length===1){const top=above?axis-116:axis+30;model.singles.push({event:g.events[0],top});model.layouts.push({id:g.events[0].id});content+=cardMarkup(g.events[0],left,top);return;}
       const top=above?12:axis+28,columnHeight=Math.max(88,above?axis-40:height-top-8);
       const key=lane.id+':'+g.events[0].id;
-      const column={key,events:g.events,top,left,height:columnHeight,track,offset:0,start:0,end:0};model.columns.push(column);columnModels.set(key,column);
+      const layout=createRowLayout(g.events,rowHeight);
+      const column={key,events:g.events,top,left,height:columnHeight,track,layout,offset:0,start:0,end:0};model.columns.push(column);columnModels.set(key,column);
       model.layouts.push({column});
-      content+=`<div class="column-count" style="left:${left}px;top:${Math.max(0,top-13)}px">${g.events.length.toLocaleString()} events</div><div class="event-column" data-column-key="${esc(key)}" role="list" tabindex="0" aria-label="${g.events.length} individual events, in date order. Scroll vertically to browse; Shift-scroll travels through time." style="left:${left}px;top:${top}px;height:${columnHeight}px"><div class="column-spacer" style="height:${g.events.length*88}px"></div></div>`;
+      content+=`<div class="column-count" ${g.events.length===1?'hidden':''} style="left:${left}px;top:${Math.max(0,top-13)}px">${g.events.length.toLocaleString()} events</div><div class="event-column" data-column-key="${esc(key)}" role="list" tabindex="0" aria-label="${g.events.length} individual events, in date order. Scroll vertically to browse; Shift-scroll travels through time." style="left:${left}px;top:${top}px;height:${columnHeight}px"><div class="column-spacer" style="height:${layout.offsets[g.events.length]}px"></div></div>`;
     });
     track.innerHTML=`<canvas class="anchor-layer" aria-hidden="true"></canvas><svg class="connection-layer" width="${width}" height="${height}" aria-hidden="true"></svg>${content}${!groups.length?`<div class="lane-empty">${lane.events.some(e=>e.start)?'No events here. Keep travelling, or fit the view.':lane.events.length?'These records have no date yet. Open the undated list.':'No events match this view.'}</div>`:''}`;
     for(const node of track.querySelectorAll('.event-column')){
@@ -251,27 +274,62 @@ function listEvents(title,events){
 }
 function pinFilter(){panel('PIN A VIEW',`<h3>A thread through the landscape.</h3><p>${esc(filterDescription(C.filter))}</p><label>Name this timeline<input id="pin-name" placeholder="e.g. Wetland restoration" style="width:100%;margin:10px 0 17px" maxlength="100"></label><button id="confirm-pin" class="primary">Pin timeline</button><p>Pinned timelines retain this filter and follow the same time scale. New matching records appear automatically.</p>`);$('#pin-name').focus();}
 function categoriesPanel(){panel('CATEGORIES & COLORS',`<h3>A palette of connections.</h3><p>Choose your own names and colors. Changing a category color updates its connecting lines.</p><div id="category-editor">${C.settings.categories.map(c=>`<div class="category-edit" data-id="${esc(c.id)}"><input type="color" value="${esc(c.color)}" aria-label="Category color"><input type="text" value="${esc(c.name)}" aria-label="Category name"><button data-delete-category="${esc(c.id)}" aria-label="Delete category">×</button></div>`).join('')}</div><button id="add-category">＋ Category</button><button id="save-categories" class="primary">Apply palette</button><p>Deleting a category keeps its events and their individual colors.</p>`);}
-function libraryPanel(){panel('LITERATURE BOX',`<h3>Your reading, in time.</h3><p>${esc(C.syncStatus.message)}</p><div class="settings-row"><p>Read-only sync checks for changes every 20 seconds while What Remained is open. Publication years remain year-level dates. Every field on a paper card is searchable. Your own notes and attachments are kept separately.</p><code>${esc(C.settings.sourcePath||'No library selected')}</code></div><button id="choose-library">Choose library…</button><button id="sync-now">Sync now</button><button id="toggle-sync">${C.settings.sync?'Pause':'Resume'} sync</button><p>Removed source cards are retained with a source-unavailable label. Hidden papers stay hidden. Source images are shown when opening a paper; attachments you add here are saved locally.</p>`);}
-function settingsPanel(){panel('YOUR NOTEBOOK',`<h3>Notebook settings</h3><div class="settings-row"><label>Scroll speed <select id="scroll-speed">${[[1,'Gentle'],[2,'Standard'],[4,'Fast'],[8,'Very fast']].map(([value,name])=>`<option value="${value}" ${Number(C.settings.scrollSpeed||4)===value?'selected':''}>${name}</option>`).join('')}</select></label><p>Larger movements accelerate. Hold Shift for a 3× speed boost. Ctrl + scroll zooms.</p></div><div class="settings-row"><button id="export-backup">Export portable backup</button><button id="import-backup">Import & merge backup…</button><p>Portable backups include your events, categories, pinned views, and attached files. Imports merge by event ID; matching IDs are updated. Your automatic database backup is in the Backups folder.</p></div><div class="settings-row"><button id="open-folder">Open notebook folder</button><p><code>${esc(C.root)}</code></p><button id="settings-categories">Categories & colors</button><button id="settings-library">Literature Box connection</button></div><div class="settings-row"><button id="restore-papers">Restore hidden papers</button><p>No accounts, telemetry, or cloud services. Files stay on this computer.</p></div>`);}
+function libraryPanel(){panel('SCRINIUM',`<h3>Your reading, in time.</h3><p>${esc(C.syncStatus.message)}</p><div class="settings-row"><p>Read-only sync checks for changes every 20 seconds while What Remained is open. Publication years remain year-level dates. Every field on a paper card is searchable. Your own notes and attachments are kept separately.</p><code>${esc(C.settings.sourcePath||'No library selected')}</code></div><button id="choose-library">Choose library…</button><button id="sync-now">Sync now</button><button id="toggle-sync">${C.settings.sync?'Pause':'Resume'} sync</button><p>Removed source cards are retained with a source-unavailable label. Hidden papers stay hidden. Source images are shown when opening a paper; attachments you add here are saved locally.</p>`);}
+function settingsPanel(){panel('YOUR NOTEBOOK',`<h3>Notebook settings</h3><div class="settings-row"><label>Scroll speed <select id="scroll-speed">${[[1,'Gentle'],[2,'Standard'],[4,'Fast'],[8,'Very fast']].map(([value,name])=>`<option value="${value}" ${Number(C.settings.scrollSpeed||4)===value?'selected':''}>${name}</option>`).join('')}</select></label><p>Larger movements accelerate. Hold Shift for a 3× speed boost. Ctrl + scroll zooms.</p></div><div class="settings-row"><button id="export-backup">Export portable backup</button><button id="import-backup">Import & merge backup…</button><p>Portable backups include your events, categories, pinned views, and attached files. Imports merge by event ID; matching IDs are updated. Your automatic database backup is in the Backups folder.</p></div><div class="settings-row"><button id="open-folder">Open notebook folder</button><p><code>${esc(C.root)}</code></p><button id="settings-categories">Categories & colors</button><button id="settings-library">Scrinium connection</button></div><div class="settings-row"><button id="restore-papers">Restore hidden papers</button><p>No accounts, telemetry, or cloud services. Files stay on this computer.</p></div>`);}
 function helpPanel(){panel('A SMALL FIELD GUIDE',`<h3>Make room for time.</h3><p><b>Travel.</b> Scroll or drag a timeline. The bottom slider travels across your whole collection. All pinned views move together. Use Ctrl + scroll, the + / − buttons, or the keyboard to zoom.</p><p><b>Record.</b> Add a point in time or give it an end date. Hover a period for its magnified lens. Attach pictures, PDFs, or other files; add captions and any custom fields you need. Double-click empty timeline space to add an event there.</p><p><b>Connect.</b> Search matches words across every field, source metadata, captions, and filenames. Multiple words must all appear. Categories are combined with OR; other filters are combined with AND. Date filters include periods that overlap the chosen range.</p><p><b>Compare.</b> Pin a filter to create a separate timeline; repeat to compare several threads. Each pin remembers the filter. Use the current search view for exploring without changing pins.</p><p><b>Read density.</b> Nearby events stay as individual cards in chronological columns. Scroll a long column vertically to browse every event; hold Shift to travel horizontally. Each event keeps its own exact date point. Year-only events anchor to 1 January.</p><p><b>Keep.</b> Event changes save in the background after a short pause and before you close the app. Export a portable backup to move the notebook, including its files. A database backup is also refreshed after edits.</p><p><b>Shortcuts.</b> / focuses search · N adds an event · arrows pan a focused timeline · + / − zoom · Esc closes dialogs.</p>`);}
 function makeDraft(time){const d=new Date(time??Date.now());return {id:uid(),title:'',start:d.toISOString().slice(0,10),end:'',category:C.settings.categories[0]?.id||'',color:C.settings.categories[0]?.color||'#5d7965',place:'',species:'',tags:'',text:'',notes:'',extraFields:{},attachments:[]};}
-function openEditor(event,time){
+function safeFrontHtml(value){
+  const text=String(value||'');if(!/<\/?[a-z][^>]*>/i.test(text))return esc(text).replace(/\r?\n/g,'<br>');
+  const parsed=new DOMParser().parseFromString(text,'text/html');
+  const allowed=new Set(['P','DIV','BR','B','STRONG','I','EM','U','S','DEL','UL','OL','LI','BLOCKQUOTE','H1','H2','H3','H4','CODE','PRE','HR','SPAN','A']);
+  const walk=node=>{
+    if(node.nodeType===Node.TEXT_NODE)return esc(node.textContent);
+    if(node.nodeType!==Node.ELEMENT_NODE||['SCRIPT','STYLE','IFRAME','OBJECT','SVG','MATH'].includes(node.tagName))return '';
+    const inside=[...node.childNodes].map(walk).join('');if(!allowed.has(node.tagName))return inside;
+    const tag=node.tagName.toLowerCase();
+    if(tag==='a'){const href=node.getAttribute('href')||'';return /^(https?:\/\/|mailto:|#card-\d+$)/i.test(href)?`<a href="${esc(href)}">${inside}</a>`:inside;}
+    return ['br','hr'].includes(tag)?`<${tag}>`:`<${tag}>${inside}</${tag}>`;
+  };
+  return [...parsed.body.childNodes].map(walk).join('');
+}
+function sourceList(value){try{const list=JSON.parse(value||'[]');return Array.isArray(list)?list.map(String):[];}catch{return String(value||'').split(',').map(s=>s.trim()).filter(Boolean);}}
+function frontFigures(event){return [...(event.paperAttachments||[]),...(event.attachments||[]).filter(a=>a.image)];}
+function renderCardFront(event){
+  const source=event.source,fields=event.fields||{},figures=frontFigures(event);
+  const tags=source?sourceList(fields.keywords):String(event.tags||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const categories=source?[...new Set([...sourceList(fields.categories),fields.status].filter(Boolean))]:[categoryName(event)];
+  const citation=source?[source.authors,source.year].filter(Boolean).join(' · '):[dateLabel(event.start),event.end&&dateLabel(event.end)].filter(Boolean).join(' — ');
+  const doi=source?.doi?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'');
+  const details=source?`${fields.methods?`<div><b>Methods</b>${safeFrontHtml(fields.methods)}</div>`:''}${fields.limitations?`<div><b>Limitations</b>${safeFrontHtml(fields.limitations)}</div>`:''}${plain(fields.notes)?`<div><b>Scrinium notes</b>${safeFrontHtml(fields.notes)}</div>`:''}`:'';
+  $('#card-face').classList.toggle('has-front-figures',figures.length>0);
+  $('#front-origin').textContent=source?'From Scrinium · source stays read-only':'What Remained';
+  $('#card-face').innerHTML=`<div class="front-card-number">${source?'Paper':'Event'}</div><span class="front-status">${esc(categories.join(' · ')||'Uncategorized')}</span><h2>${esc(event.title)}</h2><p class="front-citation">${esc(citation)}</p><p class="front-journal">${esc(source?.journal||[event.place,event.species].filter(Boolean).join(' · '))}${doi?` · <a href="https://doi.org/${esc(doi)}">DOI</a>`:source?.link?` · <a href="${esc(source.link)}">Source ↗</a>`:''}</p><div class="front-rule"></div><div class="front-findings">${safeFrontHtml(source?fields.findings||event.text:event.text)||'<p class="front-empty">No description yet.</p>'}</div><div class="front-expanded-details">${details}${event.notes?`<div><b>My timeline notes</b>${safeFrontHtml(event.notes)}</div>`:''}${Object.entries(event.extraFields||{}).map(([key,value])=>`<div><b>${esc(key)}</b>${safeFrontHtml(value)}</div>`).join('')}</div><div class="front-tags">${tags.map(tag=>`<span>${esc(tag)}</span>`).join('')}</div>${figures.length?`<div class="front-thumbnails" aria-label="Card figures">${figures.slice(0,3).map((figure,i)=>`<button type="button" data-front-image="${i}" aria-label="Enlarge ${esc(figure.caption||figure.name)}"><img src="${asset(figure)}" alt="${esc(figure.caption||figure.name)}"></button>`).join('')}${figures.length>3?`<span>+${figures.length-3}</span>`:''}</div>`:''}<footer class="front-card-footer"><span>${esc(source?sourceList(fields.projects).join(' › ')||'Unfiled':categoryName(event))}</span><button type="button" id="flip-to-back">${source?'Edit notes & fields':'Edit event'} ↗</button></footer>`;
+}
+function setCardSide(front){
+  $('#card-front').hidden=!front;$('#event-form').hidden=front;$('#editor').classList.toggle('is-front',front);$('#editor').scrollTop=0;
+}
+function openCard(event){openEditor(event,undefined,true);}
+function openEditor(event,time,front=false){
   hideLens();activeDraft=structuredClone(event||makeDraft(time));draftDirty=false;
-  $('#editor-error').textContent='';$('#editor-eyebrow').textContent=event?(event.source?'FROM LITERATURE BOX':'AN EVENT IN TIME'):'A NEW EVENT';
+  $('#editor-error').textContent='';$('#editor-eyebrow').textContent=event?(event.source?'FROM SCRINIUM':'AN EVENT IN TIME'):'A NEW EVENT';
   for(const key of ['title','start','end','color','place','species','tags','text','notes'])$('#event-'+key).value=activeDraft[key]||'';
   $('#event-category').innerHTML=C.settings.categories.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('#event-category').value=activeDraft.category;
-  for(const key of ['title','start','end','place','species','tags','text'])$('#event-'+key).readOnly=!!event?.source;
+  for(const key of ['title','start','end','tags','text'])$('#event-'+key).readOnly=!!event?.source;
   $('#event-start').required=!event?.source;
   $('#delete-event').hidden=!event;$('#delete-event').textContent=event?.source?'Hide paper':'Delete event';
   $('#source-note').hidden=!event?.source;
-  if(event?.source)$('#source-note').innerHTML=`${esc(event.source.authors)}<br>${esc(event.source.journal)} · ${esc(event.source.year||'Undated')} · Read-only source${event.sourceMissing?' · Source no longer available':''}${event.source.doi||event.source.link?`<br><button type="button" class="quiet" id="open-paper-link">Open paper ↗</button>`:''}<button type="button" class="quiet" id="fit-event">Fit ${event.end?'period':'event'} ↗</button>`;
+  if(event?.source)$('#source-note').innerHTML=`${esc(event.source.authors)}<br>${esc(event.source.journal)} · ${esc(event.source.year||'Undated')} · Scrinium source is read-only; edit your timeline notes and fields below${event.sourceMissing?' · Source no longer available':''}${event.source.doi||event.source.link?`<br><button type="button" class="quiet" id="open-paper-link">Open paper ↗</button>`:''}<button type="button" class="quiet" id="fit-event">Fit ${event.end?'period':'event'} ↗</button>`;
   else $('#source-note').innerHTML='';
   if(!event?.source && event?.end){$('#source-note').hidden=false;$('#source-note').innerHTML='<button type="button" class="quiet" id="fit-event">Fit this period in the timeline ↗</button>';}
   renderExtra();renderAttachments();
   $('#paper-details').innerHTML=event?.source?`${(event.paperAttachments||[]).map(a=>`<figure><img style="max-width:100%;max-height:260px;object-fit:contain" src="${asset(a)}" alt="${esc(a.caption||a.name)}"><figcaption>${esc(a.caption||a.name)}</figcaption></figure>`).join('')}<details><summary>All source fields · searchable</summary><dl>${Object.entries(event.fields||{}).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(plain(v))}</dd>`).join('')}</dl></details>`:'';
   $('#draft-status').textContent=event?'Saved locally':'Saved when you close';
-  $('#editor').showModal();$('#event-title').focus();
+  $('#back-to-front').hidden=!event;
+  $('#card-face').classList.remove('front-expanded');$('#expand-front').textContent='Expand card';$('#expand-front').setAttribute('aria-expanded','false');
+  setCardSide(front);if(front)renderCardFront(activeDraft);
+  $('#editor').showModal();if(front)$('#flip-to-back').focus();else {resizeTitle();$('#event-title').focus();}
 }
+function resizeTitle(){const title=$('#event-title');title.style.height='auto';title.style.height=title.scrollHeight+2+'px';}
 function renderExtra(){
   $('#extra-fields').innerHTML=Object.entries(activeDraft.extraFields||{}).map(([k,v])=>`<div class="extra-row"><input class="extra-key" value="${esc(k)}" placeholder="Field name" aria-label="Field name"><textarea class="extra-value" placeholder="Anything you want to record" aria-label="Field value">${esc(v)}</textarea><button type="button" data-remove-field aria-label="Remove field">×</button></div>`).join('');
 }
@@ -299,7 +357,7 @@ async function saveDraft(required=true){
 }
 async function closeEditor(){if(!activeDraft){$('#editor').close();return;}collectDraft();if(!activeDraft.title.trim()&&!C.events.some(e=>e.id===activeDraft.id)){draftDirty=false;activeDraft=null;$('#editor').close();return;}await saveDraft();await persistPromise;activeDraft=null;$('#editor').close();}
 let gallery=[],galleryIndex=0;
-function viewImage(index){collectDraft();gallery=activeDraft.attachments.filter(a=>a.image);galleryIndex=gallery.findIndex(a=>a===activeDraft.attachments[index]);showImage();$('#image-viewer').showModal();}
+function viewImage(index,front=false){collectDraft();gallery=front?frontFigures(activeDraft):activeDraft.attachments.filter(a=>a.image);galleryIndex=front?index:gallery.findIndex(a=>a===activeDraft.attachments[index]);showImage();$('#image-viewer').showModal();}
 function showImage(){const a=gallery[galleryIndex];$('#full-image').src=asset(a);$('#full-image').alt=a.caption||a.name;$('#full-caption').textContent=`${a.caption||a.name} · ${galleryIndex+1} / ${gallery.length}`;}
 async function examples(){
   const samples=[{title:'First arrival at the wetland',start:'2024-09-16',place:'Field notebook · example',species:'Migratory shorebirds',text:'An example observation. Replace this with your own field notes.',category:'observation'},{title:'A season of restoration',start:'2024-11',end:'2025-05',category:'conservation',text:'An example period spanning several months. Hover to explore the period lens.'},{title:'The first summer rains',start:'2025-01-12',category:'climate',text:'An example climate event. Add your own rainfall, location, and source fields.'},{title:'Return to the same transect',start:'2025-09-18',species:'Community survey',category:'observation',text:'An example return visit. Pin a species or place filter to compare threads.'},{title:'Habitat monitoring',start:'2025-02',end:'2025-08',category:'conservation',text:'A second example period, with its own category color.'}];
@@ -308,9 +366,12 @@ async function examples(){
 }
 // Delegation keeps interaction listeners independent of animation and virtualization.
 document.addEventListener('click',async event=>{try{
+  const link=event.target.closest('#card-front a');
+  if(link){event.preventDefault();const href=link.getAttribute('href');const id=/^#card-(\d+)$/.exec(href)?.[1];if(id){const linked=C.events.find(e=>String(e.source?.id)===id);if(linked){await closeEditor();openCard(linked);}else toast('This linked card is available in Scrinium.');}else await call('openLink',href);return;}
   const b=event.target.closest('button');if(!b)return;
-  if(b.dataset.event){await closePanel();openEditor(C.events.find(e=>e.id===b.dataset.event));return;}
-  if(b.dataset.openListed){$('#panel').close();openEditor(C.events.find(e=>e.id===b.dataset.openListed));return;}
+  if(b.dataset.event){await closePanel();openCard(C.events.find(e=>e.id===b.dataset.event));return;}
+  if(b.dataset.openListed){$('#panel').close();openCard(C.events.find(e=>e.id===b.dataset.openListed));return;}
+  if(b.dataset.frontImage!==undefined){viewImage(Number(b.dataset.frontImage),true);return;}
   if(b.dataset.categoryFilter){const id=b.dataset.categoryFilter;C.filter.categories=C.filter.categories.includes(id)?C.filter.categories.filter(c=>c!==id):[...C.filter.categories,id];filterChanged();return;}
   if(b.hasAttribute('data-hide-current')){C.showCurrent=false;rebuild();return;}
   if(b.dataset.unpin){await saveSettings({pins:C.settings.pins.filter(p=>p.id!==b.dataset.unpin)});return;}
@@ -346,7 +407,11 @@ document.addEventListener('click',async event=>{try{
     case 'load-examples':await examples();break;
     case 'close-panel':$('#panel').close();break;
     case 'close-editor':await closeEditor();break;
-    case 'delete-event':if(confirm(activeDraft.source?'Hide this paper from What Remained? Its Literature Box card is kept.':'Delete this event?')){clearTimeout(draftTimer);await persistPromise;await call('remove',activeDraft.id);C.events=C.events.filter(e=>e.id!==activeDraft.id);activeDraft=null;draftDirty=false;$('#editor').close();await load();}break;
+    case 'close-front':await closeEditor();break;
+    case 'flip-to-back':setCardSide(false);resizeTitle();(activeDraft.source?$('#event-notes'):$('#event-title')).focus();break;
+    case 'back-to-front':collectDraft();validateEvent(activeDraft);renderCardFront(activeDraft);setCardSide(true);if(draftDirty)saveDraft(false).catch(report);break;
+    case 'expand-front':{const expanded=$('#card-face').classList.toggle('front-expanded');b.textContent=expanded?'Collapse card':'Expand card';b.setAttribute('aria-expanded',String(expanded));break;}
+    case 'delete-event':if(confirm(activeDraft.source?'Hide this paper from What Remained? Its Scrinium card is kept.':'Delete this event?')){clearTimeout(draftTimer);await persistPromise;await call('remove',activeDraft.id);C.events=C.events.filter(e=>e.id!==activeDraft.id);activeDraft=null;draftDirty=false;$('#editor').close();await load();}break;
     case 'add-field':collectDraft();$('#extra-fields').insertAdjacentHTML('beforeend','<div class="extra-row"><input class="extra-key" placeholder="Field name" aria-label="Field name"><textarea class="extra-value" placeholder="Anything you want to record" aria-label="Field value"></textarea><button type="button" data-remove-field aria-label="Remove field">×</button></div>');break;
     case 'add-attachment':{const files=await call('attach');if(files.length){collectDraft();activeDraft.attachments.push(...files);renderAttachments();draftChanged();}break;}
     case 'open-paper-link':{const s=activeDraft.source;await call('openLink',s.link||`https://doi.org/${s.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//,'')}`);break;}
@@ -364,6 +429,7 @@ document.addEventListener('change',event=>{if(event.target.id==='scroll-speed')s
 $('#travel-slider').addEventListener('input',()=>{const bounds=allBounds();if(bounds)moveTo(bounds[0]+Number($('#travel-slider').value)/1000*(bounds[1]-bounds[0]),C.targetScale);});
 for(const id of ['source-filter','from-filter','to-filter'])$('#'+id).addEventListener('change',filterChanged);
 $('#event-form').addEventListener('input',draftChanged);
+$('#event-title').addEventListener('input',resizeTitle);
 $('#event-category').addEventListener('change',()=>{$('#event-color').value=C.settings.categories.find(c=>c.id===$('#event-category').value)?.color||'#5d7965';draftChanged();});
 $('#event-form').addEventListener('submit',async event=>{event.preventDefault();try{collectDraft();draftDirty=true;await closeEditor();}catch(error){$('#editor-error').textContent=error.message;}});
 $('#editor').addEventListener('cancel',event=>{event.preventDefault();closeEditor().catch(report);});
@@ -374,8 +440,9 @@ document.addEventListener('keydown',event=>{
   if(document.querySelector('dialog[open]')||/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))return;
   if(event.key==='/'){event.preventDefault();$('#search').focus();}if(event.key.toLowerCase()==='n')openEditor();
 });
-new ResizeObserver(()=>render()).observe($('#lanes'));
+let resizeFrame=0;
+new ResizeObserver(()=>{if(!resizeFrame)resizeFrame=requestAnimationFrame(()=>{resizeFrame=0;render();});}).observe($('#lanes'));
 window.field.onUpdate(async message=>{if(message.notice){toast(message.notice);return;}if(message.changed)try{await load();}catch(error){report(error);}});
 window.field.onClose(async()=>{if(activeDraft){collectDraft();if(activeDraft.title.trim())await saveDraft();}await persistPromise;});
-window.Reminiscence={state:C,load,fit,openEditor,saveDraft,rebuild,render,filterChanged,moveTo,examples};
+window.Reminiscence={state:C,load,fit,openEditor,openCard,saveDraft,rebuild,render,filterChanged,moveTo,examples};
 load(true).then(()=>{C.ready=true;if(!C.settings.view)fit();}).catch(report);
