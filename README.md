@@ -6,15 +6,15 @@ A private ecological notebook across time. A modern, minimalist Windows desktop 
 
 ## Download for Windows
 
-[Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.1.0/What-Remained-1.1.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
+[Download the installer](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.2.0/What-Remained-1.2.0-Setup.exe) or [download the portable ZIP](https://github.com/Vandi-LiangWaner/what-remained/releases/download/v1.2.0/What-Remained-1.2.0-portable.zip). All builds and checksums are on the [releases page](https://github.com/Vandi-LiangWaner/what-remained/releases).
 
 Run the installer to create Start menu and desktop shortcuts, or extract the portable ZIP and open `What Remained.exe`. The installer does not require administrator rights. This initial release is unsigned.
 
 ![What Remained: events and pinned filters on one shared timeline canvas](docs/timeline.png)
 
-## Development preview: 1.2.0
+## New in 1.2.0
 
-The local 1.2.0 preview replaces collapsed groups with individually readable, scrollable event columns. Every event retains its own exact date point; year-only events anchor to 1 January. Panning does not regroup columns or pin dates to the viewport edges. The download links above remain the published 1.1.0 release until this visual update is approved for publication.
+Version 1.2.0 replaces collapsed groups with individually readable, scrollable event columns. Every event retains its own exact date point; year-only events anchor to 1 January. Panning does not regroup columns or pin dates to the viewport edges.
 
 Your notebook lives in **Documents/Reminiscence**, independently of the application folder. The SQLite database is `reminiscence.sqlite`; managed files live in `Attachments`. An automatic database backup is refreshed after edits in `Backups`. Use **Notebook settings → Export portable backup** to include attachments in a portable JSON backup. Import merges event IDs and updates matching records. To remove the application, right-click `Uninstall.ps1` in its installation folder and run it with PowerShell; notebook data is retained.
 
